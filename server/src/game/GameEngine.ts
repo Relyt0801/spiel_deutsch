@@ -5,6 +5,7 @@ import {
   JAIL_BAIL, PASS_GO_AMOUNT, STARTING_MONEY, BANK_HOUSES, BANK_HOTELS,
   DOUBLE_IN_ROW_JAIL, RAILROAD_INDICES, UTILITY_INDICES,
 } from '../config/boardData'
+import { ALL_CARDS } from '../config/cards'
 
 export interface Player {
   id: string
@@ -369,7 +370,129 @@ export function drawCard(
 
   s.pendingCardAction = { id: cardId, type }
   s.gamePhase = 'card_drawn'
-  return { newState: s, card: { id: cardId } }
+  const fullCard = ALL_CARDS[cardId]
+  return { newState: s, card: fullCard as unknown as Record<string, unknown> }
+}
+
+export function applyCardEffect(state: GameState, playerId: string): GameState {
+  if (!state.pendingCardAction) return advanceTurn(state)
+  const card = ALL_CARDS[state.pendingCardAction.id as string]
+  if (!card) return advanceTurn({ ...state, pendingCardAction: null })
+
+  let s: GameState = { ...state, pendingCardAction: null }
+  const pIdx = s.players.findIndex(p => p.id === playerId)
+  const player = s.players[pIdx]
+
+  switch (card.action) {
+    case 'ADVANCE_TO_GO': {
+      s.players = s.players.map((p, i) =>
+        i === pIdx ? { ...p, position: GO_INDEX, money: p.money + PASS_GO_AMOUNT } : p
+      )
+      s = addLog(s, `${player.name}: Karte – zu "Unterricht beginnt!" + ${PASS_GO_AMOUNT}€!`, 'success')
+      break
+    }
+    case 'ADVANCE_TO': {
+      const target = card.target!
+      const passGo = target < player.position
+      s.players = s.players.map((p, i) =>
+        i === pIdx ? { ...p, position: target, money: p.money + (passGo ? PASS_GO_AMOUNT : 0) } : p
+      )
+      s = addLog(s, `${player.name}: Karte – zu ${BOARD_SQUARES[target].name}${passGo ? ` +${PASS_GO_AMOUNT}€` : ''}.`, 'info')
+      // Check landing on the target (rent, etc.) - apply a landing at new position
+      const { newState } = applyLanding(s, playerId)
+      return newState
+    }
+    case 'ADVANCE_TO_RAILROAD': {
+      const pos = player.position
+      const next = RAILROAD_INDICES.find(i => i > pos) ?? RAILROAD_INDICES[0]
+      const passGo = next < pos
+      s.players = s.players.map((p, i) =>
+        i === pIdx ? { ...p, position: next, money: p.money + (passGo ? PASS_GO_AMOUNT : 0) } : p
+      )
+      s = addLog(s, `${player.name}: Karte – zum nächsten Schulbus (${BOARD_SQUARES[next].name}).`, 'info')
+      const { newState } = applyLanding(s, playerId)
+      return newState
+    }
+    case 'ADVANCE_TO_UTILITY': {
+      const pos = player.position
+      const next = UTILITY_INDICES.find(i => i > pos) ?? UTILITY_INDICES[0]
+      const passGo = next < pos
+      s.players = s.players.map((p, i) =>
+        i === pIdx ? { ...p, position: next, money: p.money + (passGo ? PASS_GO_AMOUNT : 0) } : p
+      )
+      s = addLog(s, `${player.name}: Karte – zum nächsten Versorgungswerk.`, 'info')
+      const { newState } = applyLanding(s, playerId)
+      return newState
+    }
+    case 'COLLECT': {
+      s.players = s.players.map((p, i) =>
+        i === pIdx ? { ...p, money: p.money + card.amount! } : p
+      )
+      s = addLog(s, `${player.name}: Karte – erhält ${card.amount}€!`, 'success')
+      break
+    }
+    case 'PAY': {
+      s.players = s.players.map((p, i) =>
+        i === pIdx ? { ...p, money: p.money - card.amount! } : p
+      )
+      s = addLog(s, `${player.name}: Karte – zahlt ${card.amount}€.`, 'warning')
+      break
+    }
+    case 'COLLECT_FROM_PLAYERS': {
+      const amount = card.amount!
+      const activePlayers = s.players.filter(p => p.id !== playerId && p.isActive && !p.isBankrupt)
+      const total = activePlayers.length * amount
+      s.players = s.players.map((p, i) => {
+        if (i === pIdx) return { ...p, money: p.money + total }
+        if (p.isActive && !p.isBankrupt) return { ...p, money: p.money - amount }
+        return p
+      })
+      s = addLog(s, `${player.name}: Karte – erhält ${amount}€ von jedem Mitspieler!`, 'success')
+      break
+    }
+    case 'PAY_PLAYERS': {
+      const amount = card.amount!
+      const activePlayers = s.players.filter(p => p.id !== playerId && p.isActive && !p.isBankrupt)
+      s.players = s.players.map((p, i) => {
+        if (i === pIdx) return { ...p, money: p.money - amount * activePlayers.length }
+        if (p.isActive && !p.isBankrupt) return { ...p, money: p.money + amount }
+        return p
+      })
+      s = addLog(s, `${player.name}: Karte – zahlt ${amount}€ an jeden Mitspieler.`, 'warning')
+      break
+    }
+    case 'GO_TO_JAIL': {
+      return sendToJail(s, playerId)
+    }
+    case 'GET_OUT_OF_JAIL_FREE': {
+      s.players = s.players.map((p, i) =>
+        i === pIdx ? { ...p, getOutOfJailCards: p.getOutOfJailCards + 1 } : p
+      )
+      s = addLog(s, `${player.name}: Befreiungskarte erhalten!`, 'success')
+      break
+    }
+    case 'MOVE_BACK': {
+      const newPos = ((player.position - card.amount!) + 40) % 40
+      s.players = s.players.map((p, i) =>
+        i === pIdx ? { ...p, position: newPos } : p
+      )
+      s = addLog(s, `${player.name}: Karte – ${card.amount} Felder zurück.`, 'info')
+      const { newState } = applyLanding(s, playerId)
+      return newState
+    }
+    case 'BUILDING_REPAIRS': {
+      const houseCount = player.properties.reduce((acc, pi) => acc + s.properties[pi].houses, 0)
+      const hotelCount = player.properties.reduce((acc, pi) => acc + (s.properties[pi].hotel ? 1 : 0), 0)
+      const total = houseCount * card.house! + hotelCount * card.hotel!
+      s.players = s.players.map((p, i) =>
+        i === pIdx ? { ...p, money: p.money - total } : p
+      )
+      s = addLog(s, `${player.name}: Gebäudereparatur – zahlt ${total}€.`, 'warning')
+      break
+    }
+  }
+
+  return advanceTurn(s)
 }
 
 export function startAuction(state: GameState, propertyIndex: number): GameState {
@@ -478,6 +601,36 @@ export function buyHotel(state: GameState, playerId: string, propertyIndex: numb
   s.bankHouses += 4
   s.bankHotels -= 1
   s = addLog(s, `${player.name} baut ein Schulgebäude auf ${square.name}.`, 'success')
+  return s
+}
+
+export function sellHouse(state: GameState, playerId: string, propertyIndex: number): GameState {
+  let s = { ...state }
+  const square = BOARD_SQUARES[propertyIndex]
+  const prop = s.properties[propertyIndex]
+  const player = s.players.find(p => p.id === playerId)!
+  if (prop.ownerId !== playerId || prop.hotel || prop.houses <= 0) return s
+
+  const refund = Math.floor((square.houseCost || 0) / 2)
+  s.players = s.players.map(p => p.id === playerId ? { ...p, money: p.money + refund } : p)
+  s.properties = s.properties.map(p => p.boardIndex === propertyIndex ? { ...p, houses: p.houses - 1 } : p)
+  s.bankHouses += 1
+  s = addLog(s, `${player.name} verkauft einen Klassenraum von ${square.name} für ${refund}€.`, 'info')
+  return s
+}
+
+export function sellHotel(state: GameState, playerId: string, propertyIndex: number): GameState {
+  let s = { ...state }
+  const square = BOARD_SQUARES[propertyIndex]
+  const prop = s.properties[propertyIndex]
+  const player = s.players.find(p => p.id === playerId)!
+  if (prop.ownerId !== playerId || !prop.hotel) return s
+
+  const refund = Math.floor((square.houseCost || 0) / 2)
+  s.players = s.players.map(p => p.id === playerId ? { ...p, money: p.money + refund } : p)
+  s.properties = s.properties.map(p => p.boardIndex === propertyIndex ? { ...p, hotel: false, houses: 0 } : p)
+  s.bankHotels += 1
+  s = addLog(s, `${player.name} verkauft ein Schulgebäude von ${square.name} für ${refund}€.`, 'info')
   return s
 }
 

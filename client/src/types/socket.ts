@@ -12,6 +12,7 @@ export interface ClientToServerEvents {
   'game:decline-property': () => void
   'game:end-turn': () => void
   'game:movement-complete': () => void
+  'game:card-acknowledge': () => void
 
   'game:jail-pay': () => void
   'game:jail-use-card': () => void

@@ -125,7 +125,7 @@ function CardModal({ data, closeModal }: CardModalProps) {
       <div className={styles.cardText}>{card.text}</div>
       <button className={styles.btnClose} onClick={() => {
         closeModal()
-        getSocket().emit('game:end-turn')
+        getSocket().emit('game:card-acknowledge')
       }}>
         OK, verstanden
       </button>

@@ -4,6 +4,7 @@ import { useUiStore } from '../../../store/uiStore'
 import { getSocket } from '../../../socket/socketClient'
 import { PLAYER_COLORS, PIECE_LABELS } from '../../../types/game'
 import { BOARD_SQUARES } from '../../../config/boardData'
+import { BuildingPanel } from './BuildingPanel'
 import styles from './HUD.module.css'
 
 export function HUD() {
@@ -82,6 +83,8 @@ export function HUD() {
               </button>
             </div>
           )}
+
+          <BuildingPanel gameState={gameState} myId={myId} />
 
           {canRoll && (
             <button className={styles.btnRoll} onClick={handleRoll}>

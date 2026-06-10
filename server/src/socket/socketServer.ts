@@ -74,6 +74,11 @@ export function setupSocketHandlers(io: Server): void {
       room?.handleEndTurn(socket.id)
     })
 
+    socket.on('game:card-acknowledge', () => {
+      const room = roomManager.getRoomBySocket(socket.id)
+      room?.handleCardAcknowledge(socket.id)
+    })
+
     socket.on('game:jail-pay', () => {
       const room = roomManager.getRoomBySocket(socket.id)
       room?.handleJailAction(socket.id, 'pay')
@@ -97,6 +102,16 @@ export function setupSocketHandlers(io: Server): void {
     socket.on('game:buy-hotel', ({ propertyIndex }) => {
       const room = roomManager.getRoomBySocket(socket.id)
       room?.handleBuyHotel(socket.id, propertyIndex)
+    })
+
+    socket.on('game:sell-house', ({ propertyIndex }) => {
+      const room = roomManager.getRoomBySocket(socket.id)
+      room?.handleSellHouse(socket.id, propertyIndex)
+    })
+
+    socket.on('game:sell-hotel', ({ propertyIndex }) => {
+      const room = roomManager.getRoomBySocket(socket.id)
+      room?.handleSellHotel(socket.id, propertyIndex)
     })
 
     socket.on('game:mortgage', ({ propertyIndex }) => {

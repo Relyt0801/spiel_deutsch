@@ -4,6 +4,7 @@ import { Board } from './Board/Board'
 import { Pieces } from './Pieces/Pieces'
 import { DiceContainer } from './Dice/DiceContainer'
 import { CameraController } from './Camera/CameraController'
+import { Buildings } from './Buildings/Buildings'
 
 export function Scene() {
   return (
@@ -32,6 +33,7 @@ export function Scene() {
 
       <CameraController />
       <Board />
+      <Buildings />
       <Pieces />
       <DiceContainer />
 

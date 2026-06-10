@@ -2,8 +2,8 @@ import type { Server } from 'socket.io'
 import {
   GameState, Player, initGameState, rollDice, movePlayer, applyLanding,
   buyProperty, sendToJail, startAuction, placeBid, passAuction, endAuction,
-  buyHouse, buyHotel, mortgage, unmortgage, proposeTrade, acceptTrade,
-  declareBankruptcy, handleEndTurn, advanceTurn,
+  buyHouse, buyHotel, sellHouse, sellHotel, mortgage, unmortgage, proposeTrade, acceptTrade,
+  declareBankruptcy, handleEndTurn, advanceTurn, applyCardEffect,
 } from './GameEngine'
 import type { TradeOffer } from './GameEngine'
 import { logger } from '../utils/logger'
@@ -59,9 +59,11 @@ export class GameRoom {
 
     this.broadcast('game:dice-rolled', { playerId: socketId, roll, gameState: this.state })
 
-    // Send step-by-step movement events
+    // Send step-by-step movement events after dice animation (~2s)
     const steps = roll.total
     const startPos = currentPlayer.position
+    const DICE_ANIM_MS = 2000
+    const STEP_MS = 380
     for (let i = 0; i < steps; i++) {
       const fromIndex = (startPos + i) % 40
       const toIndex = (startPos + i + 1) % 40
@@ -73,7 +75,7 @@ export class GameRoom {
           stepNumber: i + 1,
           totalSteps: steps,
         })
-      }, i * 350) // 350ms per step matches client animation
+      }, DICE_ANIM_MS + i * STEP_MS)
     }
   }
 
@@ -159,6 +161,14 @@ export class GameRoom {
     this.broadcastState()
   }
 
+  handleCardAcknowledge(socketId: string): void {
+    if (!this.state) return
+    const currentPlayer = this.state.players[this.state.currentPlayerIndex]
+    if (currentPlayer.id !== socketId || this.state.gamePhase !== 'card_drawn') return
+    this.state = applyCardEffect(this.state, socketId)
+    this.broadcastState()
+  }
+
   handleBuyHouse(socketId: string, propertyIndex: number): void {
     if (!this.state) return
     this.state = buyHouse(this.state, socketId, propertyIndex)
@@ -168,6 +178,18 @@ export class GameRoom {
   handleBuyHotel(socketId: string, propertyIndex: number): void {
     if (!this.state) return
     this.state = buyHotel(this.state, socketId, propertyIndex)
+    this.broadcastState()
+  }
+
+  handleSellHouse(socketId: string, propertyIndex: number): void {
+    if (!this.state) return
+    this.state = sellHouse(this.state, socketId, propertyIndex)
+    this.broadcastState()
+  }
+
+  handleSellHotel(socketId: string, propertyIndex: number): void {
+    if (!this.state) return
+    this.state = sellHotel(this.state, socketId, propertyIndex)
     this.broadcastState()
   }
 
