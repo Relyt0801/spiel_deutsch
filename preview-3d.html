@@ -1,0 +1,548 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Remigianum Monopoly – 3D Vorschau</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a2e; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+  canvas { display: block; }
+
+  #ui-title {
+    position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+    text-align: center; pointer-events: none; z-index: 10;
+  }
+  #ui-title h1 {
+    color: #CC0000; font-size: 1.5rem; font-weight: 900; letter-spacing: 3px;
+    text-transform: uppercase; text-shadow: 0 2px 12px rgba(204,0,0,0.5);
+  }
+  #ui-title p { color: rgba(255,255,255,0.38); font-size: 0.72rem; letter-spacing: 3px; margin-top: 2px; }
+
+  #ui-hint {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+    background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 20px; padding: 7px 18px;
+    color: rgba(255,255,255,0.55); font-size: 0.75rem; pointer-events: none; z-index: 10;
+  }
+
+  #ui-legend {
+    position: fixed; top: 18px; left: 18px;
+    background: rgba(0,0,0,0.65); border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 10px; padding: 10px 14px;
+    display: flex; flex-direction: column; gap: 5px; pointer-events: none; z-index: 10;
+  }
+  .leg-row { display: flex; align-items: center; gap: 8px; font-size: 0.72rem; color: rgba(255,255,255,0.65); }
+  .leg-dot { width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
+  .leg-title { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.3); margin-bottom: 2px; }
+
+  #loading {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: #1a1a2e; z-index: 100; flex-direction: column; gap: 12px;
+  }
+  #loading p { color: rgba(255,255,255,0.5); font-size: 0.85rem; }
+  #loading .bar {
+    width: 200px; height: 3px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;
+  }
+  #loading .fill { height: 100%; background: #CC0000; border-radius: 2px; animation: load 1.2s ease infinite; }
+  @keyframes load { 0%{width:0} 50%{width:100%} 100%{width:0;margin-left:100%} }
+</style>
+</head>
+<body>
+
+<div id="loading">
+  <p>🏫 Lade 3D-Spielfeld...</p>
+  <div class="bar"><div class="fill"></div></div>
+</div>
+
+<div id="ui-title">
+  <h1>🏫 Remigianum</h1>
+  <p>MONOPOLY · 3D VORSCHAU</p>
+</div>
+
+<div id="ui-hint">Maus: Drehen · Scroll: Zoom · Klick: Auto-Kamera pausieren</div>
+
+<div id="ui-legend">
+  <div class="leg-title">Spielfiguren</div>
+  <div class="leg-row"><div class="leg-dot" style="background:#CC0000;"></div>🩷 Radiergummi (Pos. 21)</div>
+  <div class="leg-row"><div class="leg-dot" style="background:#009933;"></div>✏️ Bleistift (Pos. 6)</div>
+  <div class="leg-row"><div class="leg-dot" style="background:#0066CC;"></div>📚 Buch (Pos. 37)</div>
+  <div class="leg-row"><div class="leg-dot" style="background:#9933CC;"></div>⚙️ Spitzer (Pos. 14)</div>
+  <div style="height:4px;"></div>
+  <div class="leg-title">Gebäude (Demo)</div>
+  <div class="leg-row"><div class="leg-dot" style="background:#228B22;border-radius:2px;"></div>🏠 Klassenräume auf Rot-Gruppe</div>
+  <div class="leg-row"><div class="leg-dot" style="background:#8B0000;border-radius:2px;"></div>🏢 Schulgebäude auf Dunkelblau</div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three'
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+
+// ─── CONSTANTS ─────────────────────────────────────────────────────────────
+const BH = 5.0   // BOARD_HALF
+const CORNER = 1.5
+const NORMAL_W = 1.0
+const NORMAL_D = 1.5
+const SQ_H = 0.08
+
+const COLOR_HEX = {
+  brown:     '#8B4513',
+  light_blue:'#87CEEB',
+  pink:      '#FF69B4',
+  orange:    '#FF8C00',
+  red:       '#CC0000',
+  yellow:    '#FFD700',
+  green:     '#228B22',
+  dark_blue: '#00008B',
+  railroad:  '#444444',
+  utility:   '#888888',
+}
+
+const SQ_BG = {
+  go:           '#d4edda',
+  jail_visit:   '#cce5ff',
+  free_parking: '#fff9c4',
+  go_to_jail:   '#f8d7da',
+  tax:          '#fce4ec',
+  chance:       '#fff3e0',
+  community:    '#e8eaf6',
+  property:     '#fafafa',
+  railroad:     '#eeeeee',
+  utility:      '#eeeeee',
+}
+
+const SQUARES = [
+  {id:0, type:'go',color:null}, {id:1,type:'property',color:'brown'},
+  {id:2,type:'community',color:null}, {id:3,type:'property',color:'brown'},
+  {id:4,type:'tax',color:null}, {id:5,type:'railroad',color:'railroad'},
+  {id:6,type:'property',color:'light_blue'}, {id:7,type:'chance',color:null},
+  {id:8,type:'property',color:'light_blue'}, {id:9,type:'property',color:'light_blue'},
+  {id:10,type:'jail_visit',color:null}, {id:11,type:'property',color:'pink'},
+  {id:12,type:'utility',color:'utility'}, {id:13,type:'property',color:'pink'},
+  {id:14,type:'property',color:'pink'}, {id:15,type:'railroad',color:'railroad'},
+  {id:16,type:'property',color:'orange'}, {id:17,type:'community',color:null},
+  {id:18,type:'property',color:'orange'}, {id:19,type:'property',color:'orange'},
+  {id:20,type:'free_parking',color:null}, {id:21,type:'property',color:'red'},
+  {id:22,type:'chance',color:null}, {id:23,type:'property',color:'red'},
+  {id:24,type:'property',color:'red'}, {id:25,type:'railroad',color:'railroad'},
+  {id:26,type:'property',color:'yellow'}, {id:27,type:'property',color:'yellow'},
+  {id:28,type:'utility',color:'utility'}, {id:29,type:'property',color:'yellow'},
+  {id:30,type:'go_to_jail',color:null}, {id:31,type:'property',color:'green'},
+  {id:32,type:'property',color:'green'}, {id:33,type:'community',color:null},
+  {id:34,type:'property',color:'green'}, {id:35,type:'railroad',color:'railroad'},
+  {id:36,type:'chance',color:null}, {id:37,type:'property',color:'dark_blue'},
+  {id:38,type:'tax',color:null}, {id:39,type:'property',color:'dark_blue'},
+]
+
+// ─── POSITION CALC ──────────────────────────────────────────────────────────
+function getPos(idx) {
+  const p = new Array(40)
+  const c0X = BH - CORNER/2
+  p[0] = [c0X, 0, BH]
+  for (let i=1; i<=9; i++) p[i] = [c0X - CORNER/2 - NORMAL_W*(i-1) - NORMAL_W/2, 0, BH]
+  p[10] = [-BH + CORNER/2, 0, BH - CORNER/2]
+  for (let i=11; i<=19; i++) p[i] = [-BH + CORNER/2, 0, (BH-CORNER) - NORMAL_W*(i-11) - NORMAL_W/2]
+  p[20] = [-BH + CORNER/2, 0, -BH + CORNER/2]
+  for (let i=21; i<=29; i++) p[i] = [-BH + CORNER + NORMAL_W*(i-21) + NORMAL_W/2, 0, -BH + CORNER/2]
+  p[30] = [BH - CORNER/2, 0, -BH + CORNER/2]
+  for (let i=31; i<=39; i++) p[i] = [BH - CORNER/2, 0, -BH + CORNER + NORMAL_W*(i-31) + NORMAL_W/2]
+  return p[idx] || [0, 0, 0]
+}
+
+function getSide(idx) {
+  if ([0,10,20,30].includes(idx)) return 'corner'
+  if (idx>=1&&idx<=9) return 'bottom'
+  if (idx>=11&&idx<=19) return 'left'
+  if (idx>=21&&idx<=29) return 'top'
+  return 'right'
+}
+
+// ─── SCENE ──────────────────────────────────────────────────────────────────
+const scene = new THREE.Scene()
+scene.background = new THREE.Color('#1a1a2e')
+scene.fog = new THREE.FogExp2('#1a1a2e', 0.028)
+
+const renderer = new THREE.WebGLRenderer({ antialias: true })
+renderer.setSize(window.innerWidth, window.innerHeight)
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+renderer.shadowMap.enabled = true
+renderer.shadowMap.type = THREE.PCFSoftShadowMap
+renderer.outputColorSpace = THREE.SRGBColorSpace
+renderer.toneMapping = THREE.ACESFilmicToneMapping
+renderer.toneMappingExposure = 1.1
+document.body.appendChild(renderer.domElement)
+
+const W = window.innerWidth, H = window.innerHeight
+const camera = new THREE.PerspectiveCamera(50, W/H, 0.1, 100)
+camera.position.set(0, 14, 9)
+camera.lookAt(0, 0, 0)
+
+const controls = new OrbitControls(camera, renderer.domElement)
+controls.enableDamping = true
+controls.dampingFactor = 0.07
+controls.minDistance = 4
+controls.maxDistance = 24
+controls.maxPolarAngle = Math.PI / 2.05
+controls.target.set(0, 0, 0)
+
+// ─── LIGHTING ───────────────────────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0xffffff, 0.65))
+
+const sun = new THREE.DirectionalLight(0xfff5e4, 1.3)
+sun.position.set(8, 20, 8)
+sun.castShadow = true
+sun.shadow.mapSize.set(2048, 2048)
+sun.shadow.camera.near = 1; sun.shadow.camera.far = 60
+sun.shadow.camera.left = -13; sun.shadow.camera.right = 13
+sun.shadow.camera.top = 13; sun.shadow.camera.bottom = -13
+sun.shadow.bias = -0.001
+scene.add(sun)
+
+scene.add(Object.assign(new THREE.PointLight(0x6688cc, 0.4, 35), {position: new THREE.Vector3(0,8,0)}))
+scene.add(Object.assign(new THREE.PointLight(0xcc4400, 0.2, 20), {position: new THREE.Vector3(4,6,-4)}))
+
+// ─── HELPERS ────────────────────────────────────────────────────────────────
+const matCache = {}
+function mat(color, rough=0.5, metal=0) {
+  const k = `${color}-${rough}-${metal}`
+  if (!matCache[k]) matCache[k] = new THREE.MeshStandardMaterial({color, roughness:rough, metalness:metal})
+  return matCache[k]
+}
+
+function box(w,h,d, color, rough=0.5) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w,h,d), mat(color, rough))
+  m.castShadow = m.receiveShadow = true
+  return m
+}
+
+function textTex(lines, opts={}) {
+  const {w=256,h=256,bg='#fafafa',fg='#222',fontSize=28,bold=false,subFg='#CC0000',subSize=18} = opts
+  const c = document.createElement('canvas'); c.width=w; c.height=h
+  const ctx = c.getContext('2d')
+  ctx.fillStyle = bg; ctx.fillRect(0,0,w,h)
+  lines.forEach((line,i) => {
+    const isFirst = i===0
+    ctx.fillStyle = isFirst ? fg : (i===lines.length-1 && line.match(/^\d/) ? subFg : fg)
+    ctx.font = `${bold&&isFirst?'bold ':''} ${isFirst?fontSize:subSize}px sans-serif`
+    ctx.textAlign = 'center'
+    ctx.fillText(line, w/2, h/2 + (i - (lines.length-1)/2) * (isFirst?fontSize:subSize) * 1.15)
+  })
+  return new THREE.CanvasTexture(c)
+}
+
+// ─── BOARD ──────────────────────────────────────────────────────────────────
+// Shadow receiver beneath board
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(30,30), new THREE.MeshStandardMaterial({color:'#111120', roughness:1}))
+ground.rotation.x = -Math.PI/2; ground.position.y = -0.25; ground.receiveShadow = true
+scene.add(ground)
+
+// Board border (wood frame)
+const border = box(12, 0.18, 12, '#6B3A1F', 0.8)
+border.position.y = -0.09
+scene.add(border)
+
+// Board surface
+const surface = box(11.5, 0.1, 11.5, '#f5f0e8', 0.7)
+surface.position.y = 0
+scene.add(surface)
+
+// Inner center (dark green felt)
+const centerFelt = box(8.0, 0.04, 8.0, '#1d3a1d', 0.9)
+centerFelt.position.y = 0.07
+scene.add(centerFelt)
+
+// Center logo
+{
+  const c = document.createElement('canvas'); c.width=512; c.height=512
+  const ctx = c.getContext('2d')
+  ctx.fillStyle = '#1d3a1d'; ctx.fillRect(0,0,512,512)
+  ctx.fillStyle = '#CC0000'; ctx.font = 'bold 72px sans-serif'
+  ctx.textAlign = 'center'; ctx.fillText('REMIGIANUM', 256, 220)
+  ctx.fillStyle = 'rgba(255,255,255,0.55)'; ctx.font = '32px sans-serif'
+  ctx.fillText('MONOPOLY', 256, 270)
+  ctx.strokeStyle = 'rgba(204,0,0,0.4)'; ctx.lineWidth = 2
+  ctx.strokeRect(20,20,472,472)
+
+  const logo = new THREE.Mesh(new THREE.PlaneGeometry(7,7),
+    new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c), transparent:true}))
+  logo.rotation.x = -Math.PI/2; logo.position.y = 0.1
+  scene.add(logo)
+}
+
+// ─── SQUARES ────────────────────────────────────────────────────────────────
+const ICON_MAP = {go:'▶', jail_visit:'🏠', free_parking:'☕', go_to_jail:'❌',
+  tax:'💸', chance:'❓', community:'📋', railroad:'🚌', utility:'⚡'}
+
+SQUARES.forEach(sq => {
+  const [x,,z] = getPos(sq.id)
+  const isCorner = [0,10,20,30].includes(sq.id)
+  const w = isCorner ? CORNER : NORMAL_W
+  const d = isCorner ? CORNER : NORMAL_D
+  const side = getSide(sq.id)
+
+  const bg = SQ_BG[sq.type] || '#fafafa'
+
+  // Square base
+  const sqMesh = box(w, SQ_H, d, bg, 0.7)
+  sqMesh.position.set(x, SQ_H/2, z)
+  scene.add(sqMesh)
+
+  // Square outline
+  const edges = new THREE.LineSegments(
+    new THREE.EdgesGeometry(new THREE.BoxGeometry(w, SQ_H+0.001, d)),
+    new THREE.LineBasicMaterial({color:'#bbbbbb', transparent:true, opacity:0.4})
+  )
+  edges.position.set(x, SQ_H/2, z)
+  scene.add(edges)
+
+  // Property color strip
+  if (sq.color) {
+    const stripColor = COLOR_HEX[sq.color] || '#999'
+    const SW = 0.26 // strip width
+    let sx=x, sz=z, sW, sD
+
+    if (side === 'bottom') {
+      sz = z + (NORMAL_D/2 - SW/2 - 0.01)
+      sW = w*0.88; sD = SW
+    } else if (side === 'top') {
+      sz = z - (NORMAL_D/2 - SW/2 - 0.01)
+      sW = w*0.88; sD = SW
+    } else if (side === 'left') {
+      sx = x - (NORMAL_W/2 - SW/2 - 0.01)
+      sW = SW; sD = d*0.88
+    } else if (side === 'right') {
+      sx = x + (NORMAL_W/2 - SW/2 - 0.01)
+      sW = SW; sD = d*0.88
+    } else {
+      // Corner with color (railroad etc)
+      sW = w*0.5; sD = SW
+      sz = z + (d/2 - SW/2 - 0.01)
+    }
+
+    const strip = new THREE.Mesh(
+      new THREE.BoxGeometry(sW, SQ_H+0.04, sD),
+      new THREE.MeshStandardMaterial({color: stripColor, roughness:0.4})
+    )
+    strip.position.set(sx, SQ_H/2+0.01, sz)
+    strip.castShadow = strip.receiveShadow = true
+    scene.add(strip)
+  }
+
+  // Text label (canvas texture)
+  const icon = ICON_MAP[sq.type] || ''
+  const sqName = sq.id === 0 ? 'Unterricht\nbeginn!' :
+    sq.id === 10 ? 'Nachsitz-\nZimmer' :
+    sq.id === 20 ? 'Freie\nPause ☕' :
+    sq.id === 30 ? 'Nachsitzen!' : ''
+
+  if (isCorner && sqName) {
+    const c2 = document.createElement('canvas'); c2.width=128; c2.height=128
+    const ctx = c2.getContext('2d')
+    ctx.fillStyle = bg; ctx.fillRect(0,0,128,128)
+    ctx.fillStyle = sq.id===30?'#cc0000':sq.id===0?'#228B22':'#333'
+    ctx.font = 'bold 14px sans-serif'; ctx.textAlign='center'
+    const lines2 = sqName.split('\n')
+    lines2.forEach((l,i) => ctx.fillText(l, 64, 52 + i*18))
+    const label = new THREE.Mesh(new THREE.PlaneGeometry(isCorner?1.1:0.85, isCorner?1.1:0.85),
+      new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c2),transparent:true}))
+    label.rotation.x = -Math.PI/2; label.position.set(x, SQ_H+0.03, z)
+    scene.add(label)
+  }
+})
+
+// ─── PLAYER PIECES ──────────────────────────────────────────────────────────
+function makePiece(type, color) {
+  const group = new THREE.Group()
+  const m = mat(color, 0.3, 0.15)
+
+  switch(type) {
+    case 'Radiergummi':
+      group.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.24,0.14,0.16), m), {castShadow:true}))
+      break
+    case 'Lineal':
+      group.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.48,0.06,0.1), m), {castShadow:true}))
+      break
+    case 'Bleistift': {
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.04,0.38,6), m); body.castShadow=true
+      const tip = new THREE.Mesh(new THREE.ConeGeometry(0.04,0.14,6), mat('#f0c88a',0.6)); tip.position.y=0.26; tip.castShadow=true
+      group.add(body, tip)
+      break
+    }
+    case 'Spitzer':
+      group.add(Object.assign(new THREE.Mesh(new THREE.ConeGeometry(0.11,0.22,6), m), {castShadow:true}))
+      break
+    case 'Tintenfüller': {
+      const body = new THREE.Mesh(new THREE.CylinderGeometry(0.04,0.055,0.32,8), m); body.castShadow=true
+      const nib = new THREE.Mesh(new THREE.ConeGeometry(0.03,0.1,6), mat('#aaaaaa',0.4,0.8)); nib.position.y=0.21; nib.castShadow=true
+      group.add(body, nib)
+      break
+    }
+    case 'Buch':
+      group.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.19,0.26,0.08), m), {castShadow:true}))
+      break
+    default:
+      group.add(Object.assign(new THREE.Mesh(new THREE.SphereGeometry(0.13,8,8), m), {castShadow:true}))
+  }
+
+  // Glow base circle
+  const glow = new THREE.Mesh(
+    new THREE.CircleGeometry(0.16, 20),
+    new THREE.MeshStandardMaterial({color, transparent:true, opacity:0.35, side:THREE.DoubleSide})
+  )
+  glow.rotation.x = -Math.PI/2; glow.position.y = -0.09
+  group.add(glow)
+
+  return group
+}
+
+const PLAYERS = [
+  {piece:'Radiergummi', color:'#CC0000', pos:21, ox:0,   oz:0  },
+  {piece:'Bleistift',   color:'#009933', pos:6,  ox:0.1, oz:-0.1},
+  {piece:'Buch',        color:'#0066CC', pos:37, ox:0,   oz:0  },
+  {piece:'Spitzer',     color:'#9933CC', pos:14, ox:-0.1,oz:0.1 },
+]
+
+PLAYERS.forEach(p => {
+  const piece = makePiece(p.piece, p.color)
+  const [px,,pz] = getPos(p.pos)
+  piece.position.set(px+p.ox, SQ_H+0.14, pz+p.oz)
+  scene.add(piece)
+})
+
+// ─── BUILDINGS ──────────────────────────────────────────────────────────────
+function addHouse(propIdx, houseNum, total) {
+  const [px,,pz] = getPos(propIdx)
+  const side = getSide(propIdx)
+  const g = new THREE.Group()
+
+  // Body
+  g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.16,0.22,0.16), mat('#1a7a1a',0.6)), {castShadow:true}))
+  // Roof
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.14,0.18,4), mat('#aa2200',0.5))
+  roof.position.y = 0.2; roof.rotation.y = Math.PI/4; roof.castShadow = true
+  g.add(roof)
+
+  g.position.y = SQ_H + 0.11
+  const spacing = total > 1 ? 0.22 : 0
+  const offset = (houseNum - (total-1)/2) * spacing
+
+  if (side==='bottom') { g.position.x=px+offset; g.position.z=pz+(NORMAL_D/2-0.25) }
+  else if (side==='top') { g.position.x=px+offset; g.position.z=pz-(NORMAL_D/2-0.25) }
+  else if (side==='left') { g.position.x=px-(NORMAL_W/2-0.25); g.position.z=pz+offset }
+  else { g.position.x=px+(NORMAL_W/2-0.25); g.position.z=pz+offset }
+
+  scene.add(g)
+}
+
+function addHotel(propIdx) {
+  const [px,,pz] = getPos(propIdx)
+  const side = getSide(propIdx)
+  const g = new THREE.Group()
+
+  g.add(Object.assign(new THREE.Mesh(new THREE.BoxGeometry(0.36,0.52,0.26), mat('#7a0000',0.5)), {castShadow:true}))
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(0.3,0.22,4), mat('#CC0000',0.45))
+  roof.position.y = 0.37; roof.rotation.y = Math.PI/4; roof.castShadow = true
+  g.add(roof)
+
+  g.position.y = SQ_H + 0.26
+  if (side==='top') { g.position.x=px; g.position.z=pz-(NORMAL_D/2-0.28) }
+  else if (side==='bottom') { g.position.x=px; g.position.z=pz+(NORMAL_D/2-0.28) }
+  else if (side==='right') { g.position.x=px+(NORMAL_W/2-0.28); g.position.z=pz }
+  else { g.position.x=px-(NORMAL_W/2-0.28); g.position.z=pz }
+
+  scene.add(g)
+}
+
+// Demo: 2 Klassenräume auf Sportplatz (21), 1 auf Lehrerzimmer (23), Schulgebäude auf Direktorenbüro (37)
+addHouse(21, 0, 2); addHouse(21, 1, 2)
+addHouse(23, 0, 1)
+addHotel(37)
+
+// ─── DICE (decorative) ──────────────────────────────────────────────────────
+function makeDieFace(value) {
+  const c = document.createElement('canvas'); c.width=64; c.height=64
+  const ctx = c.getContext('2d')
+  ctx.fillStyle='#fff'; ctx.roundRect(2,2,60,60,10); ctx.fill()
+  ctx.fillStyle='#CC0000'
+  const dots = {
+    1:[[32,32]],
+    2:[[16,16],[48,48]],
+    3:[[16,16],[32,32],[48,48]],
+    4:[[16,16],[48,16],[16,48],[48,48]],
+    5:[[16,16],[48,16],[32,32],[16,48],[48,48]],
+    6:[[16,14],[48,14],[16,32],[48,32],[16,50],[48,50]],
+  }[value]||[[32,32]]
+  dots.forEach(([dx,dy]) => { ctx.beginPath(); ctx.arc(dx,dy,6,0,Math.PI*2); ctx.fill() })
+  return new THREE.CanvasTexture(c)
+}
+
+const dieFaces = [4,3,1,6,2,5].map(v => new THREE.MeshStandardMaterial({map:makeDieFace(v)}))
+const die1 = new THREE.Mesh(new THREE.BoxGeometry(0.65,0.65,0.65), dieFaces)
+die1.position.set(-0.4, 0.75, 1.2); die1.rotation.set(0.3,0.5,0.2)
+die1.castShadow = true; scene.add(die1)
+
+const dieFaces2 = [2,5,4,3,6,1].map(v => new THREE.MeshStandardMaterial({map:makeDieFace(v)}))
+const die2 = new THREE.Mesh(new THREE.BoxGeometry(0.65,0.65,0.65), dieFaces2)
+die2.position.set(0.4, 0.75, 1.2); die2.rotation.set(0.1,-0.4,0.3)
+die2.castShadow = true; scene.add(die2)
+
+// Small platform under dice
+const diePlatform = box(1.6, 0.05, 0.9, '#e8e0d0', 0.8)
+diePlatform.position.set(0, 0.42, 1.2); scene.add(diePlatform)
+
+// ─── CAMERA ANIMATION ───────────────────────────────────────────────────────
+let autoRotate = true
+let phi = 0.8
+const R = 17
+const PHI_SPEED = 0.12
+
+controls.addEventListener('start', () => { autoRotate = false })
+
+// ─── ANIMATE ────────────────────────────────────────────────────────────────
+const clock = new THREE.Clock()
+document.getElementById('loading').style.display = 'none'
+
+// Animate pieces floating up/down slightly
+const pieceGroups = []
+scene.traverse(o => { if (o.isGroup && o.children.length >= 2) pieceGroups.push(o) })
+
+function animate() {
+  requestAnimationFrame(animate)
+  const t = clock.getElapsedTime()
+  const dt = clock.getDelta()
+
+  if (autoRotate) {
+    phi += dt * PHI_SPEED
+    camera.position.x = R * Math.sin(phi) * 0.85
+    camera.position.y = R * 0.72
+    camera.position.z = R * Math.cos(phi) * 0.85
+    camera.lookAt(0, 0.5, 0)
+  }
+
+  // Gentle dice rotation
+  die1.rotation.y += dt * 0.4
+  die2.rotation.y -= dt * 0.35
+
+  controls.update()
+  renderer.render(scene, camera)
+}
+
+animate()
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight
+  camera.updateProjectionMatrix()
+  renderer.setSize(window.innerWidth, window.innerHeight)
+})
+</script>
+</body>
+</html>
