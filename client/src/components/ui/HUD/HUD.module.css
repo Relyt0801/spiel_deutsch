@@ -1,0 +1,212 @@
+.hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.turnBanner {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(204,0,0,0.3);
+  border-radius: 24px;
+  padding: 0.5rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: white;
+  font-size: 0.9rem;
+  font-weight: 600;
+  pointer-events: auto;
+}
+
+.turnDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.diceResult {
+  font-size: 0.85rem;
+  color: #FFD700;
+  border-left: 1px solid rgba(255,255,255,0.2);
+  padding-left: 0.6rem;
+}
+
+.sidebar {
+  position: absolute;
+  top: 60px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 180px;
+  pointer-events: none;
+}
+
+.playerCard {
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 0.5rem 0.6rem;
+  transition: all 0.3s;
+}
+.playerCard.active {
+  border-color: rgba(204,0,0,0.6);
+  background: rgba(204,0,0,0.15);
+}
+.playerCard.bankrupt {
+  opacity: 0.4;
+}
+
+.playerHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.playerDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.playerName {
+  flex: 1;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.playerPiece {
+  font-size: 0.75rem;
+}
+
+.playerMoney {
+  font-size: 0.75rem;
+  color: #90EE90;
+  margin-top: 2px;
+}
+
+.playerPos {
+  font-size: 0.7rem;
+  color: rgba(255,255,255,0.5);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.jailBadge {
+  font-size: 0.7rem;
+  color: #FF8C00;
+  margin-top: 2px;
+}
+
+.actions {
+  position: absolute;
+  bottom: 20px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-end;
+  pointer-events: auto;
+}
+
+.jailActions {
+  background: rgba(0,0,0,0.8);
+  border: 1px solid rgba(255,140,0,0.4);
+  border-radius: 12px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.jailTitle {
+  font-size: 0.75rem;
+  color: #FF8C00;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 2px;
+}
+
+.btnSmall {
+  background: rgba(255,140,0,0.2);
+  color: white;
+  border: 1px solid rgba(255,140,0,0.4);
+  border-radius: 6px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btnSmall:hover:not(:disabled) { background: rgba(255,140,0,0.4); }
+.btnSmall:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btnRoll {
+  background: #CC0000;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  padding: 0.75rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 15px rgba(204,0,0,0.4);
+  letter-spacing: 1px;
+}
+.btnRoll:hover { background: #ff0000; transform: translateY(-2px); box-shadow: 0 6px 20px rgba(204,0,0,0.6); }
+
+.btnEnd {
+  background: rgba(0,153,51,0.8);
+  color: white;
+  border: 1px solid rgba(0,255,100,0.3);
+  border-radius: 12px;
+  padding: 0.65rem 1.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btnEnd:hover { background: rgba(0,153,51,1); }
+
+.animating {
+  color: rgba(255,255,255,0.5);
+  font-size: 0.85rem;
+}
+
+.log {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 280px;
+  pointer-events: none;
+}
+
+.logEntry {
+  background: rgba(0,0,0,0.65);
+  backdrop-filter: blur(6px);
+  border-radius: 6px;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.8);
+  border-left: 3px solid rgba(255,255,255,0.2);
+}
+.logEntry.success { border-left-color: #90EE90; }
+.logEntry.warning { border-left-color: #FF8C00; }
+.logEntry.info { border-left-color: rgba(255,255,255,0.3); }
