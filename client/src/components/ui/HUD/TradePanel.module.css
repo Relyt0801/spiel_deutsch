@@ -1,0 +1,120 @@
+.container {
+  position: relative;
+}
+
+.toggle {
+  background: rgba(0, 50, 150, 0.7);
+  color: white;
+  border: 1px solid rgba(100, 150, 255, 0.3);
+  border-radius: 10px;
+  padding: 0.55rem 1rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.toggle:hover { background: rgba(0, 80, 200, 0.8); }
+
+.panel {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  background: rgba(20, 20, 40, 0.97);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 0.75rem;
+  width: 270px;
+  max-height: 420px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.section {}
+
+.label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.45);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 5px;
+}
+
+.playerBtns { display: flex; gap: 4px; flex-wrap: wrap; }
+
+.playerBtn {
+  background: rgba(255,255,255,0.07);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.playerBtn:hover { background: rgba(255,255,255,0.14); }
+.playerBtn.active {
+  background: rgba(0, 100, 255, 0.3);
+  border-color: rgba(100, 150, 255, 0.5);
+}
+
+.divider {
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.7);
+  padding: 2px 0;
+  cursor: pointer;
+}
+.check input { accent-color: #CC0000; cursor: pointer; }
+
+.moneyRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.55);
+}
+
+.numInput {
+  width: 72px;
+  background: rgba(255,255,255,0.08);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.78rem;
+}
+.numInput::placeholder { color: rgba(255,255,255,0.3); }
+
+.empty {
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.3);
+  padding: 2px 0;
+}
+
+.proposeBtn {
+  width: 100%;
+  background: rgba(0, 50, 150, 0.4);
+  color: white;
+  border: 1px solid rgba(100, 150, 255, 0.35);
+  border-radius: 8px;
+  padding: 0.5rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  margin-top: 2px;
+}
+.proposeBtn:hover:not(:disabled) { background: rgba(0, 80, 200, 0.6); }
+.proposeBtn:disabled { opacity: 0.35; cursor: not-allowed; }

@@ -1,10 +1,11 @@
+import { useState } from 'react'
 import { useUiStore } from '../../../store/uiStore'
 import { useGameStore } from '../../../store/gameStore'
 import { useSocketStore } from '../../../store/socketStore'
 import { getSocket } from '../../../socket/socketClient'
 import { BOARD_SQUARES, PROPERTY_COLOR_HEX } from '../../../config/boardData'
 import { PLAYER_COLORS } from '../../../types/game'
-import type { GameState } from '../../../types/game'
+import type { GameState, TradeOffer } from '../../../types/game'
 import styles from './Modals.module.css'
 
 export function Modals() {
@@ -31,6 +32,9 @@ export function Modals() {
         {activeModal === 'auction' && (
           <AuctionModal myId={myId} gameState={gameState} />
         )}
+        {activeModal === 'trade' && (
+          <TradeModal myId={myId} gameState={gameState} closeModal={closeModal} />
+        )}
         {activeModal === 'winner' && (
           <WinnerModal gameState={gameState} closeModal={closeModal} />
         )}
@@ -38,6 +42,8 @@ export function Modals() {
     </div>
   )
 }
+
+// ─── Property ────────────────────────────────────────────────────────────────
 
 interface PropertyModalProps {
   data: Record<string, unknown>
@@ -66,13 +72,13 @@ function PropertyModal({ data, myId, gameState, closeModal }: PropertyModalProps
           <p className={styles.propPrice}>💰 Kaufpreis: <strong>{square.price}€</strong></p>
           {square.type === 'property' && (
             <div className={styles.rentTable}>
-              <div>Miete (ohne Häuser): {square.rent[0]}€</div>
-              <div>Mit 1 Klassenraum: {square.rent[1]}€</div>
-              <div>Mit 2 Klassenräumen: {square.rent[2]}€</div>
-              <div>Mit 3 Klassenräumen: {square.rent[3]}€</div>
-              <div>Mit 4 Klassenräumen: {square.rent[4]}€</div>
-              <div>Mit Schulgebäude: {square.rent[5]}€</div>
-              <div>Klassenraum-Kosten: {square.houseCost}€</div>
+              <div>Miete (kein Gebäude): {square.rent[0]}€</div>
+              <div>1 Klassenraum: {square.rent[1]}€</div>
+              <div>2 Klassenräume: {square.rent[2]}€</div>
+              <div>3 Klassenräume: {square.rent[3]}€</div>
+              <div>4 Klassenräume: {square.rent[4]}€</div>
+              <div>Schulgebäude: {square.rent[5]}€</div>
+              <div>Klassenraum kostet: {square.houseCost}€</div>
             </div>
           )}
           <div className={styles.btnRow}>
@@ -80,7 +86,7 @@ function PropertyModal({ data, myId, gameState, closeModal }: PropertyModalProps
               ✅ Kaufen ({square.price}€)
             </button>
             <button className={styles.btnAuction} onClick={() => { getSocket().emit('game:decline-property'); closeModal() }}>
-              🔨 Auktion starten
+              🔨 Auktion
             </button>
           </div>
         </>
@@ -107,6 +113,8 @@ function PropertyModal({ data, myId, gameState, closeModal }: PropertyModalProps
   )
 }
 
+// ─── Card ─────────────────────────────────────────────────────────────────────
+
 interface CardModalProps {
   data: Record<string, unknown>
   closeModal: () => void
@@ -119,7 +127,7 @@ function CardModal({ data, closeModal }: CardModalProps) {
 
   return (
     <div className={styles.cardModal}>
-      <div className={styles.cardHeader} style={{ background: isChance ? '#FF8C00' : '#4169E1' }}>
+      <div className={styles.cardHeader} style={{ background: isChance ? '#d97706' : '#2563eb' }}>
         {isChance ? '❓ Stundenplanwechsel' : '📋 Klassenbuch'}
       </div>
       <div className={styles.cardText}>{card.text}</div>
@@ -132,6 +140,8 @@ function CardModal({ data, closeModal }: CardModalProps) {
     </div>
   )
 }
+
+// ─── Jail ─────────────────────────────────────────────────────────────────────
 
 interface JailModalProps {
   myId: string | null
@@ -169,36 +179,83 @@ function JailModal({ myId, gameState, closeModal }: JailModalProps) {
   )
 }
 
+// ─── Auction ──────────────────────────────────────────────────────────────────
+
 interface AuctionModalProps {
   myId: string | null
   gameState: GameState
 }
 
 function AuctionModal({ myId, gameState }: AuctionModalProps) {
+  const [bidAmount, setBidAmount] = useState('')
   const auction = gameState.auction
   if (!auction) return null
+
   const square = BOARD_SQUARES[auction.propertyIndex]
+  const alreadyPassed = myId ? auction.passedPlayers.includes(myId) : false
+  const me = gameState.players.find(p => p.id === myId)
+  const minBid = auction.highestBid + 1
+  const numBid = parseInt(bidAmount) || 0
 
   const handleBid = () => {
-    const input = prompt('Dein Gebot (€):')
-    const amount = parseInt(input || '0')
-    if (amount > 0) getSocket().emit('auction:bid', { amount })
+    if (numBid >= minBid && me && numBid <= me.money) {
+      getSocket().emit('auction:bid', { amount: numBid })
+      setBidAmount('')
+    }
   }
-
-  const alreadyPassed = myId ? auction.passedPlayers.includes(myId) : false
 
   return (
     <div>
-      <h2 className={styles.modalTitle}>🔨 Auktion: {square?.name.replace('\n', ' ')}</h2>
-      <p className={styles.propPrice}>
-        Höchstgebot: <strong>{auction.highestBid}€</strong>
-        {auction.highestBidderId && ` von ${gameState.players.find(p => p.id === auction.highestBidderId)?.name}`}
-      </p>
+      <h2 className={styles.modalTitle}>🔨 Auktion</h2>
+      <p className={styles.auctionProp}>{square?.name.replace('\n', ' ')}</p>
+
+      <div className={styles.auctionMeta}>
+        <span>Startpreis: <strong>{square.price}€</strong></span>
+        <span>Höchstgebot: <strong>{auction.highestBid}€</strong>
+          {auction.highestBidderId && (
+            <span className={styles.bidLeader}> – {gameState.players.find(p => p.id === auction.highestBidderId)?.name}</span>
+          )}
+        </span>
+      </div>
+
       <div className={styles.auctionTimer}>⏱ {auction.timeRemaining}s</div>
-      {!alreadyPassed && (
-        <div className={styles.btnRow}>
-          <button className={styles.btnBuy} onClick={handleBid}>💰 Bieten</button>
-          <button className={styles.btnAuction} onClick={() => getSocket().emit('auction:pass')}>🚫 Passen</button>
+
+      <div className={styles.bidderList}>
+        {gameState.players.filter(p => p.isActive && !p.isBankrupt).map(p => {
+          const passed = auction.passedPlayers.includes(p.id)
+          const isLeading = p.id === auction.highestBidderId
+          return (
+            <div key={p.id} className={`${styles.bidderRow} ${isLeading ? styles.leading : ''} ${passed ? styles.passed : ''}`}>
+              <div className={styles.bidderDot} style={{ background: PLAYER_COLORS[p.color] || '#ccc' }} />
+              <span>{p.name}{p.id === myId ? ' (Du)' : ''}</span>
+              <span className={styles.bidderAmount}>
+                {passed ? '🚫 Gepasst' : auction.bids[p.id] ? `${auction.bids[p.id]}€` : '–'}
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      {!alreadyPassed && me && (
+        <div className={styles.bidInputRow}>
+          <input
+            type="number"
+            className={styles.bidInput}
+            value={bidAmount}
+            placeholder={`Min. ${minBid}€`}
+            min={minBid}
+            max={me.money}
+            onChange={e => setBidAmount(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleBid()}
+          />
+          <button className={styles.btnBuy}
+            disabled={numBid < minBid || numBid > me.money}
+            onClick={handleBid}>
+            💰 Bieten
+          </button>
+          <button className={styles.btnAuction} onClick={() => getSocket().emit('auction:pass')}>
+            🚫 Passen
+          </button>
         </div>
       )}
       {alreadyPassed && (
@@ -208,6 +265,93 @@ function AuctionModal({ myId, gameState }: AuctionModalProps) {
   )
 }
 
+// ─── Trade ────────────────────────────────────────────────────────────────────
+
+interface TradeModalProps {
+  myId: string | null
+  gameState: GameState
+  closeModal: () => void
+}
+
+function TradeModal({ myId, gameState, closeModal }: TradeModalProps) {
+  const trade = gameState.activeTrade as TradeOffer | null
+  if (!trade) return null
+
+  const fromPlayer = gameState.players.find(p => p.id === trade.fromPlayerId)
+  const toPlayer = gameState.players.find(p => p.id === trade.toPlayerId)
+  const isReceiver = myId === trade.toPlayerId
+
+  return (
+    <div>
+      <h2 className={styles.modalTitle}>🤝 Handelsangebot</h2>
+      <p className={styles.tradeMeta}>
+        <strong>{fromPlayer?.name}</strong> möchte mit <strong>{toPlayer?.name}</strong> handeln
+      </p>
+
+      <div className={styles.tradeColumns}>
+        <div className={styles.tradeCol}>
+          <div className={styles.tradeColHeader} style={{ color: PLAYER_COLORS[fromPlayer?.color || 'red'] }}>
+            {fromPlayer?.name} bietet:
+          </div>
+          {trade.offeredProperties.length > 0 && trade.offeredProperties.map(i => (
+            <div key={i} className={styles.tradeProp}>
+              {BOARD_SQUARES[i].name.replace('\n', ' ')}
+            </div>
+          ))}
+          {trade.offeredMoney > 0 && (
+            <div className={styles.tradeMoney}>💰 {trade.offeredMoney.toLocaleString('de-DE')}€</div>
+          )}
+          {trade.offeredProperties.length === 0 && trade.offeredMoney === 0 && (
+            <div className={styles.tradeNothing}>Nichts</div>
+          )}
+        </div>
+
+        <div className={styles.tradeArrow}>⇄</div>
+
+        <div className={styles.tradeCol}>
+          <div className={styles.tradeColHeader} style={{ color: PLAYER_COLORS[toPlayer?.color || 'blue'] }}>
+            {toPlayer?.name} gibt:
+          </div>
+          {trade.requestedProperties.length > 0 && trade.requestedProperties.map(i => (
+            <div key={i} className={styles.tradeProp}>
+              {BOARD_SQUARES[i].name.replace('\n', ' ')}
+            </div>
+          ))}
+          {trade.requestedMoney > 0 && (
+            <div className={styles.tradeMoney}>💰 {trade.requestedMoney.toLocaleString('de-DE')}€</div>
+          )}
+          {trade.requestedProperties.length === 0 && trade.requestedMoney === 0 && (
+            <div className={styles.tradeNothing}>Nichts</div>
+          )}
+        </div>
+      </div>
+
+      {isReceiver ? (
+        <div className={styles.btnRow}>
+          <button className={styles.btnBuy} onClick={() => {
+            getSocket().emit('trade:accept', { tradeId: trade.id })
+            closeModal()
+          }}>
+            ✅ Annehmen
+          </button>
+          <button className={styles.btnAuction} onClick={() => {
+            getSocket().emit('trade:reject', { tradeId: trade.id })
+            closeModal()
+          }}>
+            ❌ Ablehnen
+          </button>
+        </div>
+      ) : (
+        <div className={styles.tradeWaiting}>
+          ⏳ Warte auf Antwort von {toPlayer?.name}...
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Winner ───────────────────────────────────────────────────────────────────
+
 interface WinnerModalProps {
   gameState: GameState
   closeModal: () => void
@@ -215,14 +359,31 @@ interface WinnerModalProps {
 
 function WinnerModal({ gameState, closeModal }: WinnerModalProps) {
   const winner = gameState.players.find(p => p.id === gameState.winnerId)
+  const sorted = [...gameState.players].sort((a, b) => {
+    if (a.isBankrupt && !b.isBankrupt) return 1
+    if (!a.isBankrupt && b.isBankrupt) return -1
+    return b.money - a.money
+  })
 
   return (
     <div className={styles.winnerModal}>
       <div className={styles.winnerEmoji}>🏆</div>
       <h2 className={styles.winnerTitle}>{winner?.name} hat gewonnen!</h2>
-      <p className={styles.winnerText}>
-        Herzlichen Glückwunsch! Du hast das Remigianum Monopoly gewonnen mit {winner?.money.toLocaleString('de-DE')}€ im Konto!
-      </p>
+      <p className={styles.winnerText}>Herzlichen Glückwunsch! Das Remigianum Monopoly ist entschieden.</p>
+
+      <div className={styles.standings}>
+        {sorted.map((p, rank) => (
+          <div key={p.id} className={`${styles.standingRow} ${p.isBankrupt ? styles.bankrupt : ''}`}>
+            <span className={styles.rank}>{rank + 1}.</span>
+            <div className={styles.standingDot} style={{ background: PLAYER_COLORS[p.color] || '#ccc' }} />
+            <span className={styles.standingName}>{p.name}</span>
+            <span className={styles.standingMoney}>
+              {p.isBankrupt ? '💸 Bankrott' : `${p.money.toLocaleString('de-DE')}€`}
+            </span>
+          </div>
+        ))}
+      </div>
+
       <button className={styles.btnClose} onClick={closeModal}>Neues Spiel</button>
     </div>
   )

@@ -5,6 +5,7 @@ import { getSocket } from '../../../socket/socketClient'
 import { PLAYER_COLORS, PIECE_LABELS } from '../../../types/game'
 import { BOARD_SQUARES } from '../../../config/boardData'
 import { BuildingPanel } from './BuildingPanel'
+import { TradePanel } from './TradePanel'
 import styles from './HUD.module.css'
 
 export function HUD() {
@@ -12,6 +13,8 @@ export function HUD() {
   const myId = useSocketStore(s => s.myPlayerId)
   const isAnimating = useUiStore(s => s.isAnimating)
   const diceAnimating = useUiStore(s => s.diceAnimating)
+  const errorMessage = useUiStore(s => s.errorMessage)
+  const setError = useUiStore(s => s.setError)
 
   if (!gameState) return null
 
@@ -25,8 +28,16 @@ export function HUD() {
   const handleRoll = () => getSocket().emit('game:roll-dice')
   const handleEndTurn = () => getSocket().emit('game:end-turn')
 
+  const myPlayer = gameState.players.find(p => p.id === myId)
+  const canDeclareBankruptcy = isMyTurn && phase === 'end_turn' && myPlayer && !myPlayer.isBankrupt
+
   return (
     <div className={styles.hud}>
+      {errorMessage && (
+        <div className={styles.errorBanner} onClick={() => setError(null)}>
+          ⚠️ {errorMessage}
+        </div>
+      )}
       {/* Turn indicator top center */}
       <div className={styles.turnBanner}>
         <div
@@ -85,6 +96,7 @@ export function HUD() {
           )}
 
           <BuildingPanel gameState={gameState} myId={myId} />
+          <TradePanel gameState={gameState} myId={myId} />
 
           {canRoll && (
             <button className={styles.btnRoll} onClick={handleRoll}>
@@ -95,6 +107,13 @@ export function HUD() {
           {canEndTurn && (
             <button className={styles.btnEnd} onClick={handleEndTurn}>
               ✅ Zug beenden
+            </button>
+          )}
+
+          {canDeclareBankruptcy && (
+            <button className={styles.btnBankrupt}
+              onClick={() => { if (confirm('Wirklich Bankrott erklären?')) getSocket().emit('game:declare-bankruptcy') }}>
+              💸 Bankrott erklären
             </button>
           )}
 
