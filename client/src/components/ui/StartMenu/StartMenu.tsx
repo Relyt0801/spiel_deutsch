@@ -17,6 +17,7 @@ export function StartMenu() {
   const [piece, setPiece] = useState<PieceType>('Radiergummi')
   const [roomCode, setRoomCode] = useState('')
   const [mode, setMode] = useState<'choose' | 'create' | 'join'>('choose')
+  const [connectSeconds, setConnectSeconds] = useState(0)
   const errorMessage = useUiStore(s => s.errorMessage)
   const setError = useUiStore(s => s.setError)
   const connectionStatus = useSocketStore(s => s.connectionStatus)
@@ -29,6 +30,12 @@ export function StartMenu() {
     socket.on('connect', () => useSocketStore.getState().setConnectionStatus('connected'))
     socket.on('disconnect', () => useSocketStore.getState().setConnectionStatus('disconnected'))
   }, [])
+
+  useEffect(() => {
+    if (connectionStatus === 'connected') { setConnectSeconds(0); return }
+    const t = setInterval(() => setConnectSeconds(s => s + 1), 1000)
+    return () => clearInterval(t)
+  }, [connectionStatus])
 
   const handleCreate = () => {
     if (!name.trim()) { setError('Bitte Namen eingeben.'); return }
@@ -55,7 +62,15 @@ export function StartMenu() {
 
         {connectionStatus !== 'connected' && (
           <div className={styles.connecting}>
-            ⏳ Verbinde mit Server...
+            <div className={styles.connectSpinner} />
+            <div>
+              <div>Verbinde mit Server... ({connectSeconds}s)</div>
+              {connectSeconds > 10 && (
+                <div className={styles.connectHint}>
+                  Server startet gerade — kann bis zu 60s dauern ☕
+                </div>
+              )}
+            </div>
           </div>
         )}
 
