@@ -12,17 +12,40 @@ export function setupSocketHandlers(io: Server): void {
     socket.on('room:create', ({ playerName, color, piece }) => {
       const room = roomManager.createRoom(socket.id, playerName, color, piece)
       socket.join(room.code)
-      socket.emit('room:created', { roomCode: room.code, gameState: room.state })
+      socket.emit('room:created', { roomCode: room.code, gameState: room.state, lobbyPlayers: room.lobbyPlayers })
+    })
+
+    socket.on('room:peek', ({ roomCode }) => {
+      const room = roomManager.getRoomByCode(roomCode)
+      if (!room || room.state) {
+        socket.emit('room:peek-result', { takenPieces: [], takenColors: [] })
+        return
+      }
+      socket.emit('room:peek-result', {
+        takenPieces: room.lobbyPlayers.map(p => p.piece),
+        takenColors: room.lobbyPlayers.map(p => p.color),
+      })
     })
 
     socket.on('room:join', ({ roomCode, playerName, color, piece }) => {
+      const existingRoom = roomManager.getRoomByCode(roomCode)
+      if (existingRoom && !existingRoom.state) {
+        if (existingRoom.lobbyPlayers.some(p => p.piece === piece)) {
+          socket.emit('room:error', { message: 'Diese Spielfigur ist bereits vergeben.' })
+          return
+        }
+        if (existingRoom.lobbyPlayers.some(p => p.color === color)) {
+          socket.emit('room:error', { message: 'Diese Farbe ist bereits vergeben.' })
+          return
+        }
+      }
       const room = roomManager.joinRoom(roomCode, socket.id, playerName, color, piece)
       if (!room) {
         socket.emit('room:error', { message: 'Raum nicht gefunden oder voll.' })
         return
       }
       socket.join(room.code)
-      socket.emit('room:joined', { gameState: room.state })
+      socket.emit('room:joined', { gameState: room.state, lobbyPlayers: room.lobbyPlayers })
       socket.to(room.code).emit('room:player-joined', {
         player: room.lobbyPlayers.find(p => p.id === socket.id),
         gameState: room.state,

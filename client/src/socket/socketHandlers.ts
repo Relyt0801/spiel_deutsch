@@ -20,16 +20,18 @@ export function registerSocketHandlers(): void {
   })
 
   // ─── ROOM EVENTS ───────────────────────────────────────────────────
-  socket.on('room:created', ({ roomCode, gameState }) => {
+  socket.on('room:created', ({ roomCode, gameState, lobbyPlayers }) => {
     useSocketStore.getState().setRoomCode(roomCode)
     useSocketStore.getState().setIsHost(true)
     if (gameState) useGameStore.getState().setGameState(gameState)
+    if (lobbyPlayers) useGameStore.getState().setLobbyPlayers(lobbyPlayers)
     useUiStore.getState().setAppPhase('lobby')
   })
 
-  socket.on('room:joined', ({ gameState }) => {
+  socket.on('room:joined', ({ gameState, lobbyPlayers }) => {
     useSocketStore.getState().setIsHost(false)
     if (gameState) useGameStore.getState().setGameState(gameState)
+    if (lobbyPlayers) useGameStore.getState().setLobbyPlayers(lobbyPlayers)
     useUiStore.getState().setAppPhase('lobby')
   })
 

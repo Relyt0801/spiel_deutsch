@@ -147,6 +147,8 @@
 }
 .pieceBtn:hover { border-color: rgba(204,0,0,0.5); background: rgba(204,0,0,0.1); }
 .pieceBtn.selected { border-color: #CC0000; background: rgba(204,0,0,0.2); }
+.pieceBtn.taken { opacity: 0.3; cursor: not-allowed; }
+.pieceBtn.taken:hover { border-color: rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); }
 .pieceBtn span { font-size: 0.65rem; opacity: 0.8; }
 
 .colorRow {
@@ -165,6 +167,8 @@
 }
 .colorBtn:hover { transform: scale(1.15); }
 .colorBtn.selected { border-color: white; transform: scale(1.2); }
+.colorBtn.taken { cursor: not-allowed; }
+.colorBtn.taken:hover { transform: none; }
 
 .error {
   color: #ff6b6b;

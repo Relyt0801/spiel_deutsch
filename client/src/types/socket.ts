@@ -3,6 +3,7 @@ import type { GameState, Player, DiceRoll, AuctionState, TradeOffer, GameCard, P
 export interface ClientToServerEvents {
   'room:create': (payload: { playerName: string; color: PlayerColor; piece: PieceType }) => void
   'room:join': (payload: { roomCode: string; playerName: string; color: PlayerColor; piece: PieceType }) => void
+  'room:peek': (payload: { roomCode: string }) => void
   'room:leave': () => void
   'room:start-game': () => void
   'room:kick-player': (payload: { targetId: string }) => void
@@ -36,8 +37,9 @@ export interface ClientToServerEvents {
 }
 
 export interface ServerToClientEvents {
-  'room:created': (payload: { roomCode: string; gameState: GameState }) => void
-  'room:joined': (payload: { gameState: GameState }) => void
+  'room:created': (payload: { roomCode: string; gameState: GameState; lobbyPlayers: Array<{ id: string; name: string; color: string; piece: string }> }) => void
+  'room:joined': (payload: { gameState: GameState; lobbyPlayers: Array<{ id: string; name: string; color: string; piece: string }> }) => void
+  'room:peek-result': (payload: { takenPieces: string[]; takenColors: string[] }) => void
   'room:error': (payload: { message: string }) => void
   'room:player-joined': (payload: { player: Player; gameState: GameState }) => void
   'room:player-left': (payload: { playerId: string; gameState: GameState }) => void

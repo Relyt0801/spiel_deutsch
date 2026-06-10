@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { connectSocket } from '../../../socket/socketClient'
 import { registerSocketHandlers } from '../../../socket/socketHandlers'
 import { useSocketStore } from '../../../store/socketStore'
@@ -18,6 +18,9 @@ export function StartMenu() {
   const [roomCode, setRoomCode] = useState('')
   const [mode, setMode] = useState<'choose' | 'create' | 'join'>('choose')
   const [connectSeconds, setConnectSeconds] = useState(0)
+  const [takenPieces, setTakenPieces] = useState<string[]>([])
+  const [takenColors, setTakenColors] = useState<string[]>([])
+  const peekTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const errorMessage = useUiStore(s => s.errorMessage)
   const setError = useUiStore(s => s.setError)
   const connectionStatus = useSocketStore(s => s.connectionStatus)
@@ -29,6 +32,13 @@ export function StartMenu() {
     const socket = getSocket()
     socket.on('connect', () => useSocketStore.getState().setConnectionStatus('connected'))
     socket.on('disconnect', () => useSocketStore.getState().setConnectionStatus('disconnected'))
+    socket.on('room:peek-result', ({ takenPieces: tp, takenColors: tc }) => {
+      setTakenPieces(tp)
+      setTakenColors(tc)
+    })
+    return () => {
+      socket.off('room:peek-result')
+    }
   }, [])
 
   useEffect(() => {
@@ -36,6 +46,19 @@ export function StartMenu() {
     const t = setInterval(() => setConnectSeconds(s => s + 1), 1000)
     return () => clearInterval(t)
   }, [connectionStatus])
+
+  const handleRoomCodeChange = (val: string) => {
+    const upper = val.toUpperCase()
+    setRoomCode(upper)
+    setTakenPieces([])
+    setTakenColors([])
+    if (peekTimer.current) clearTimeout(peekTimer.current)
+    if (upper.length === 6) {
+      peekTimer.current = setTimeout(() => {
+        getSocket().emit('room:peek', { roomCode: upper })
+      }, 300)
+    }
+  }
 
   const handleCreate = () => {
     if (!name.trim()) { setError('Bitte Namen eingeben.'); return }
@@ -85,7 +108,7 @@ export function StartMenu() {
           </div>
         ) : (
           <div className={styles.form}>
-            <button className={styles.back} onClick={() => { setMode('choose'); setError(null) }}>← Zurück</button>
+            <button className={styles.back} onClick={() => { setMode('choose'); setError(null); setTakenPieces([]); setTakenColors([]) }}>← Zurück</button>
 
             <label className={styles.label}>Dein Name</label>
             <input
@@ -103,7 +126,7 @@ export function StartMenu() {
                   className={styles.input}
                   placeholder="z.B. ABCD12"
                   value={roomCode}
-                  onChange={e => setRoomCode(e.target.value.toUpperCase())}
+                  onChange={e => handleRoomCodeChange(e.target.value)}
                   maxLength={6}
                 />
               </>
@@ -111,35 +134,43 @@ export function StartMenu() {
 
             <label className={styles.label}>Spielfigur</label>
             <div className={styles.pieceGrid}>
-              {PIECES.map(p => (
-                <button
-                  key={p}
-                  className={`${styles.pieceBtn} ${piece === p ? styles.selected : ''}`}
-                  onClick={() => setPiece(p)}
-                  title={p}
-                >
-                  {p === 'Radiergummi' && '🩷'}
-                  {p === 'Lineal' && '📏'}
-                  {p === 'Bleistift' && '✏️'}
-                  {p === 'Spitzer' && '⚙️'}
-                  {p === 'Tintenfüller' && '🖊️'}
-                  {p === 'Buch' && '📚'}
-                  <span>{p}</span>
-                </button>
-              ))}
+              {PIECES.map(p => {
+                const taken = mode === 'join' && takenPieces.includes(p)
+                return (
+                  <button
+                    key={p}
+                    className={`${styles.pieceBtn} ${piece === p ? styles.selected : ''} ${taken ? styles.taken : ''}`}
+                    onClick={() => !taken && setPiece(p)}
+                    title={taken ? `${p} – bereits vergeben` : p}
+                    disabled={taken}
+                  >
+                    {p === 'Radiergummi' && '🩷'}
+                    {p === 'Lineal' && '📏'}
+                    {p === 'Bleistift' && '✏️'}
+                    {p === 'Spitzer' && '⚙️'}
+                    {p === 'Tintenfüller' && '🖊️'}
+                    {p === 'Buch' && '📚'}
+                    <span>{taken ? '✗' : p}</span>
+                  </button>
+                )
+              })}
             </div>
 
             <label className={styles.label}>Farbe</label>
             <div className={styles.colorRow}>
-              {COLORS.map(c => (
-                <button
-                  key={c}
-                  className={`${styles.colorBtn} ${color === c ? styles.selected : ''}`}
-                  style={{ background: PLAYER_COLORS[c] }}
-                  onClick={() => setColor(c)}
-                  title={c}
-                />
-              ))}
+              {COLORS.map(c => {
+                const taken = mode === 'join' && takenColors.includes(c)
+                return (
+                  <button
+                    key={c}
+                    className={`${styles.colorBtn} ${color === c ? styles.selected : ''} ${taken ? styles.taken : ''}`}
+                    style={{ background: PLAYER_COLORS[c], opacity: taken ? 0.35 : 1 }}
+                    onClick={() => !taken && setColor(c)}
+                    title={taken ? `${c} – bereits vergeben` : c}
+                    disabled={taken}
+                  />
+                )
+              })}
             </div>
 
             {errorMessage && <p className={styles.error}>{errorMessage}</p>}
