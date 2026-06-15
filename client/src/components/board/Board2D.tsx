@@ -207,12 +207,7 @@ export function Board2D() {
     <div className={styles.viewport}>
       <div
         className={styles.boardWrapper}
-        style={{
-          transform,
-          transition: isAnimating
-            ? 'transform 0.18s ease-out'
-            : 'transform 0.75s cubic-bezier(0.4, 0, 0.2, 1)',
-        }}
+        style={{ transform }}
       >
         <div className={styles.board}>
           {/* All 40 squares */}

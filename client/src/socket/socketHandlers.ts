@@ -74,9 +74,9 @@ export function registerSocketHandlers(): void {
 
   socket.on('game:piece-move-step', ({ toIndex, stepNumber, totalSteps }) => {
     useUiStore.getState().setIsAnimating(true)
-    useUiStore.getState().setCameraTarget(toIndex)
     if (stepNumber === totalSteps) {
-      // Last step – mark movement as complete after animation
+      // Final square: start smooth camera zoom now so it arrives as the piece lands
+      useUiStore.getState().setCameraTarget(toIndex)
       setTimeout(() => {
         useUiStore.getState().setIsAnimating(false)
         socket.emit('game:movement-complete')
