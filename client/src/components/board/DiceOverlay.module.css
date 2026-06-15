@@ -1,0 +1,65 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  gap: 24px;
+}
+
+.diceRow {
+  display: flex;
+  gap: 32px;
+  align-items: center;
+}
+
+.die {
+  width: 80px;
+  height: 80px;
+  background: #e8d5a0;
+  border-radius: 14px;
+  border: 3px solid #c4a96a;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  padding: 8px;
+  gap: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6), inset 0 1px 2px rgba(255,255,255,0.3);
+  transition: transform 0.1s ease;
+}
+
+.die.rolling {
+  animation: rollShake 0.15s infinite alternate;
+}
+
+@keyframes rollShake {
+  0% { transform: rotate(-8deg) scale(1.05); }
+  100% { transform: rotate(8deg) scale(0.95); }
+}
+
+.dot {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #1a1a2e;
+  display: block;
+}
+
+.dotEmpty {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  display: block;
+}
+
+.resultText {
+  color: #e8d5a0;
+  font-size: 1.6rem;
+  font-weight: 700;
+  font-family: 'Georgia', serif;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
+  letter-spacing: 2px;
+}

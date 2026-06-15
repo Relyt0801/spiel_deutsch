@@ -1,7 +1,7 @@
 import { useUiStore } from './store/uiStore'
 import { StartMenu } from './components/ui/StartMenu/StartMenu'
 import { Lobby } from './components/ui/Lobby/Lobby'
-import { Scene } from './components/three/Scene'
+import { Board2D } from './components/board/Board2D'
 import { HUD } from './components/ui/HUD/HUD'
 import { Modals } from './components/ui/Modals/Modals'
 
@@ -14,7 +14,7 @@ export default function App() {
       {appPhase === 'lobby' && <Lobby />}
       {appPhase === 'game' && (
         <>
-          <Scene />
+          <Board2D />
           <HUD />
           <Modals />
         </>

@@ -1,0 +1,430 @@
+/* ─── Viewport & wrapper ──────────────────────────────────────────────────── */
+.viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #0e1018;
+}
+
+.boardWrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform-origin: 0 0;
+  transition: transform 0.7s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+
+/* ─── Board ───────────────────────────────────────────────────────────────── */
+.board {
+  position: relative;
+  width: 700px;
+  height: 700px;
+  background: #0a1f14;
+  border: 3px solid #CC0000;
+  box-shadow:
+    0 0 0 6px #0e1018,
+    0 0 40px rgba(204, 0, 0, 0.3),
+    0 0 80px rgba(0, 0, 0, 0.8);
+}
+
+/* ─── Squares ─────────────────────────────────────────────────────────────── */
+.square {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid rgba(30, 80, 40, 0.8);
+  overflow: hidden;
+  background: #0d1f10;
+}
+
+/* Zone-specific flex layout */
+.zoneBottom {
+  display: flex;
+  flex-direction: column;
+}
+
+.zoneTop {
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.zoneLeft {
+  display: flex;
+  flex-direction: row-reverse;
+}
+
+.zoneRight {
+  display: flex;
+  flex-direction: row;
+}
+
+.zoneCorner {
+  display: flex;
+  flex-direction: column;
+  background: #0a1a0f;
+}
+
+/* ─── Color strip ─────────────────────────────────────────────────────────── */
+.colorStrip {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  overflow: hidden;
+}
+
+/* strip height/width based on zone - set via inline wrapper sizes */
+.zoneBottom .colorStrip,
+.zoneTop .colorStrip {
+  width: 100%;
+  height: 14px;
+}
+
+.zoneLeft .colorStrip,
+.zoneRight .colorStrip {
+  height: 100%;
+  width: 14px;
+  flex-direction: column;
+}
+
+/* ─── Square content ──────────────────────────────────────────────────────── */
+.squareContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  gap: 1px;
+}
+
+.squareIcon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.squareName {
+  font-size: 0.42rem;
+  color: #b8e6b8;
+  text-align: center;
+  line-height: 1.2;
+  word-break: break-word;
+  hyphens: auto;
+  max-width: 100%;
+}
+
+.squarePrice {
+  font-size: 0.4rem;
+  color: #d4af37;
+  font-weight: 600;
+  text-align: center;
+}
+
+/* For left/right zones, rotate content slightly */
+.zoneLeft .squareContent,
+.zoneRight .squareContent {
+  padding: 1px 2px;
+}
+
+.zoneLeft .squareName,
+.zoneRight .squareName {
+  font-size: 0.38rem;
+  line-height: 1.1;
+}
+
+/* ─── Corner squares ──────────────────────────────────────────────────────── */
+.cornerContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 4px;
+  gap: 2px;
+}
+
+.cornerIcon {
+  font-size: 1.6rem;
+  line-height: 1;
+}
+
+.cornerName {
+  font-size: 0.45rem;
+  color: #b8e6b8;
+  text-align: center;
+  font-weight: 700;
+  text-transform: uppercase;
+  line-height: 1.2;
+  letter-spacing: 0.3px;
+}
+
+.cornerSub {
+  font-size: 0.4rem;
+  color: #d4af37;
+  text-align: center;
+}
+
+/* ─── Player pieces ───────────────────────────────────────────────────────── */
+.pieceCluster {
+  position: absolute;
+  bottom: 1px;
+  right: 1px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  max-width: 90%;
+  z-index: 10;
+}
+
+.piece {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(0, 0, 0, 0.6);
+  font-size: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.5);
+}
+
+/* ─── Buildings ───────────────────────────────────────────────────────────── */
+.buildingRow {
+  display: flex;
+  gap: 1px;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.building {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.3rem;
+  font-weight: 900;
+  border-radius: 1px;
+}
+
+.house {
+  width: 6px;
+  height: 6px;
+  background: #2e7d32;
+  border: 0.5px solid #1b5e20;
+}
+
+.hotel {
+  width: 10px;
+  height: 8px;
+  background: #CC0000;
+  border: 0.5px solid #8b0000;
+  color: #e8d5a0;
+  font-size: 0.35rem;
+  font-weight: 900;
+}
+
+/* ─── Owner dot ───────────────────────────────────────────────────────────── */
+.ownerDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+/* ─── Mortgaged ───────────────────────────────────────────────────────────── */
+.mortgaged {
+  opacity: 0.5;
+}
+
+.mortgagedLabel {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-20deg);
+  font-size: 0.3rem;
+  font-weight: 900;
+  color: rgba(204, 0, 0, 0.8);
+  letter-spacing: 0.5px;
+  pointer-events: none;
+  text-transform: uppercase;
+}
+
+/* ─── Center ──────────────────────────────────────────────────────────────── */
+.center {
+  position: absolute;
+  left: 80px;
+  top: 80px;
+  width: 540px;
+  height: 540px;
+  display: flex;
+  flex-direction: column;
+  background: radial-gradient(ellipse at center, #0f2a18 0%, #0a1a0f 60%, #081510 100%);
+  border: 1px solid rgba(30, 80, 40, 0.6);
+  overflow: hidden;
+}
+
+.centerTop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1.2rem 1rem 0.8rem;
+  border-bottom: 1px solid rgba(204, 0, 0, 0.3);
+}
+
+.centerLogo {
+  font-size: 2.4rem;
+  line-height: 1;
+  margin-bottom: 0.3rem;
+}
+
+.centerTitle {
+  font-size: 1.4rem;
+  font-weight: 900;
+  color: #CC0000;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+}
+
+.centerSub {
+  font-size: 0.7rem;
+  color: rgba(184, 230, 184, 0.6);
+  letter-spacing: 6px;
+  text-transform: uppercase;
+  margin-top: 0.1rem;
+}
+
+.centerInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 0.8rem 1rem;
+  gap: 0.5rem;
+  overflow: hidden;
+}
+
+.centerEmpty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.centerEmptyText {
+  font-size: 0.7rem;
+  color: rgba(184, 230, 184, 0.4);
+  letter-spacing: 2px;
+}
+
+.turnRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.turnDot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.turnName {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #b8e6b8;
+}
+
+.diceResult {
+  font-size: 0.65rem;
+  color: #d4af37;
+  padding: 0.2rem 0.5rem;
+  background: rgba(212, 175, 55, 0.1);
+  border-radius: 6px;
+  border: 1px solid rgba(212, 175, 55, 0.2);
+}
+
+.double {
+  color: #CC0000;
+  font-weight: 700;
+}
+
+/* ─── Player list in center ───────────────────────────────────────────────── */
+.playerList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.playerRow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.playerActive {
+  background: rgba(204, 0, 0, 0.1);
+  border-color: rgba(204, 0, 0, 0.3);
+}
+
+.playerBankrupt {
+  opacity: 0.4;
+  text-decoration: line-through;
+}
+
+.playerDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.playerName {
+  font-size: 0.65rem;
+  color: #b8e6b8;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.playerMoney {
+  font-size: 0.6rem;
+  color: #d4af37;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+/* ─── Game log ────────────────────────────────────────────────────────────── */
+.logArea {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  border-top: 1px solid rgba(30, 80, 40, 0.4);
+  padding-top: 0.4rem;
+  margin-top: auto;
+}
+
+.logEntry {
+  font-size: 0.55rem;
+  color: rgba(184, 230, 184, 0.6);
+  line-height: 1.3;
+  padding: 0 0.25rem;
+}
+
+.logEntry.info { color: rgba(184, 230, 184, 0.6); }
+.logEntry.success { color: #4CAF50; }
+.logEntry.warning { color: #d4af37; }
