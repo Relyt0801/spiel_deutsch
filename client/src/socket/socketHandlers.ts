@@ -88,7 +88,7 @@ export function registerSocketHandlers(): void {
   socket.on('game:landed-property', (data) => {
     useGameStore.getState().setGameState(data.gameState)
     if (data.canBuy || data.rentDue !== null) {
-      useUiStore.getState().openModal('property', data)
+      setTimeout(() => useUiStore.getState().openModal('property', data), 650)
     }
   })
 
@@ -115,13 +115,13 @@ export function registerSocketHandlers(): void {
 
   socket.on('game:card-drawn', ({ card, cardType, gameState }) => {
     useGameStore.getState().setGameState(gameState)
-    useUiStore.getState().openModal('card', { card, cardType })
+    setTimeout(() => useUiStore.getState().openModal('card', { card, cardType }), 650)
   })
 
   // ─── AUCTION EVENTS ────────────────────────────────────────────────
   socket.on('auction:started', ({ gameState }) => {
     useGameStore.getState().setGameState(gameState)
-    useUiStore.getState().openModal('auction')
+    setTimeout(() => useUiStore.getState().openModal('auction'), 650)
   })
 
   socket.on('auction:bid-placed', ({ auction }) => {

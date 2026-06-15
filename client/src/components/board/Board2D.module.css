@@ -3,7 +3,7 @@
   position: absolute;
   inset: 0;
   overflow: hidden;
-  background: #5c0a0a;
+  background: #9B2020;
 }
 
 .boardWrapper {
@@ -20,26 +20,26 @@
   position: relative;
   width: 700px;
   height: 700px;
-  background: #1a1008;
+  background: #E8D4B0;
   border: 3px solid #CC0000;
   box-shadow:
-    0 0 0 7px #0d0804,
-    0 0 50px rgba(204, 0, 0, 0.35),
-    0 0 100px rgba(0, 0, 0, 0.9);
+    0 0 0 7px #9B2020,
+    0 0 50px rgba(0, 0, 0, 0.4),
+    0 0 100px rgba(0, 0, 0, 0.6);
 }
 
 /* ─── Squares ─────────────────────────────────────────────────────────────── */
 .square {
   position: absolute;
   box-sizing: border-box;
-  border: 1px solid rgba(90, 55, 20, 0.7);
+  border: 1px solid rgba(120, 70, 30, 0.35);
   overflow: hidden;
-  background: #1e1408;
+  background: #E8D4B0;
 }
 
 .square:hover {
-  background: #2a1c0a;
-  border-color: rgba(140, 85, 30, 0.9);
+  background: #EDE0C4;
+  border-color: rgba(160, 80, 30, 0.6);
   z-index: 5;
 }
 
@@ -48,7 +48,7 @@
 .zoneTop    { display: flex; flex-direction: column-reverse; }
 .zoneLeft   { display: flex; flex-direction: row-reverse; }
 .zoneRight  { display: flex; flex-direction: row; }
-.zoneCorner { display: flex; flex-direction: column; background: #160f05; }
+.zoneCorner { display: flex; flex-direction: column; background: #DFC8A0; }
 
 /* ─── Color strip ─────────────────────────────────────────────────────────── */
 .colorStrip {
@@ -94,18 +94,18 @@
 
 .squareName {
   font-size: 0.44rem;
-  color: #e8d0a0;
+  color: #3a1a0a;
   text-align: center;
   line-height: 1.25;
   word-break: break-word;
   hyphens: auto;
   max-width: 100%;
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .squarePrice {
   font-size: 0.42rem;
-  color: #d4af37;
+  color: #8B2010;
   font-weight: 700;
   text-align: center;
 }
@@ -141,7 +141,7 @@
 
 .cornerName {
   font-size: 0.44rem;
-  color: #e8d0a0;
+  color: #3a1a0a;
   text-align: center;
   font-weight: 800;
   text-transform: uppercase;
@@ -151,7 +151,7 @@
 
 .cornerSub {
   font-size: 0.42rem;
-  color: #d4af37;
+  color: #8B2010;
   font-weight: 700;
   text-align: center;
 }
@@ -172,13 +172,13 @@
   width: 15px;
   height: 15px;
   border-radius: 50%;
-  border: 1.5px solid rgba(0, 0, 0, 0.7);
+  border: 1.5px solid rgba(0, 0, 0, 0.5);
   font-size: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
   line-height: 1;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.7), 0 0 4px rgba(255,255,255,0.15);
+  box-shadow: 0 1px 4px rgba(0,0,0,0.5), 0 0 4px rgba(255,255,255,0.2);
 }
 
 /* ─── Buildings ───────────────────────────────────────────────────────────── */
@@ -202,9 +202,9 @@
 .house {
   width: 5px;
   height: 5px;
-  background: #388e3c;
+  background: #2e7d32;
   border: 0.5px solid #1b5e20;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.2);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.3);
 }
 
 .hotel {
@@ -212,7 +212,7 @@
   height: 7px;
   background: #CC0000;
   border: 0.5px solid #8b0000;
-  color: #e8d5a0;
+  color: #fff;
   font-size: 0.32rem;
   font-weight: 900;
 }
@@ -256,8 +256,8 @@
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  background: radial-gradient(ellipse at 50% 30%, #221508 0%, #160f05 60%, #100903 100%);
-  border: 1px solid rgba(90, 55, 20, 0.4);
+  background: radial-gradient(ellipse at 50% 30%, #DFC8A0 0%, #D4BC96 60%, #C8AF88 100%);
+  border: 1px solid rgba(120, 70, 30, 0.3);
   overflow: hidden;
 }
 
@@ -268,7 +268,7 @@
   justify-content: center;
   padding: 1rem 1rem 0.6rem;
   width: 100%;
-  border-bottom: 1px solid rgba(204, 0, 0, 0.3);
+  border-bottom: 1px solid rgba(204, 0, 0, 0.35);
 }
 
 .centerLogo {
@@ -287,7 +287,7 @@
 
 .centerSub {
   font-size: 0.55rem;
-  color: rgba(220, 195, 155, 0.5);
+  color: rgba(80, 30, 10, 0.55);
   letter-spacing: 8px;
   text-transform: uppercase;
   margin-top: 0.05rem;
@@ -312,7 +312,7 @@
 
 .centerEmptyText {
   font-size: 0.6rem;
-  color: rgba(220, 195, 155, 0.3);
+  color: rgba(80, 30, 10, 0.4);
   letter-spacing: 3px;
 }
 
@@ -338,16 +338,16 @@
 .turnName {
   font-size: 0.65rem;
   font-weight: 700;
-  color: #e8d0a0;
+  color: #3a1a0a;
 }
 
 .diceResult {
   font-size: 0.58rem;
-  color: #d4af37;
+  color: #7a3010;
   padding: 0.18rem 0.5rem;
-  background: rgba(212, 175, 55, 0.08);
+  background: rgba(120, 60, 20, 0.1);
   border-radius: 5px;
-  border: 1px solid rgba(212, 175, 55, 0.18);
+  border: 1px solid rgba(120, 60, 20, 0.2);
   text-align: center;
 }
 
@@ -369,7 +369,7 @@
   gap: 0.35rem;
   padding: 0.22rem 0.4rem;
   border-radius: 5px;
-  background: rgba(255,255,255,0.02);
+  background: rgba(0,0,0,0.04);
   border: 1px solid transparent;
 }
 
@@ -392,7 +392,7 @@
 
 .playerName {
   font-size: 0.58rem;
-  color: #d4c4a0;
+  color: #3a1a0a;
   flex: 1;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -401,7 +401,7 @@
 
 .playerMoney {
   font-size: 0.55rem;
-  color: #d4af37;
+  color: #7a3010;
   font-weight: 700;
   flex-shrink: 0;
 }
@@ -412,18 +412,18 @@
   display: flex;
   flex-direction: column;
   gap: 0.1rem;
-  border-top: 1px solid rgba(90, 55, 20, 0.4);
+  border-top: 1px solid rgba(120, 70, 30, 0.3);
   padding-top: 0.35rem;
   margin-top: 0.2rem;
 }
 
 .logEntry {
   font-size: 0.5rem;
-  color: rgba(220, 195, 155, 0.55);
+  color: rgba(60, 20, 10, 0.65);
   line-height: 1.35;
   padding: 0 0.2rem;
 }
 
-.logEntry.info    { color: rgba(220, 195, 155, 0.55); }
-.logEntry.success { color: #c8a050; }
-.logEntry.warning { color: #d4af37; }
+.logEntry.info    { color: rgba(60, 20, 10, 0.65); }
+.logEntry.success { color: #3a6e1a; }
+.logEntry.warning { color: #8B4513; }
