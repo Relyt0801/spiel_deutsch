@@ -35,7 +35,7 @@ function getBoardTransform(cameraTarget: number | null, vw: number, vh: number) 
     const sq = getSquarePos(cameraTarget)
     const cx = sq.left + sq.width / 2
     const cy = sq.top + sq.height / 2
-    const s = 2.8
+    const s = 2.2
     return `translate(${vw / 2 - s * cx}px, ${vh / 2 - s * cy}px) scale(${s})`
   }
   const s = Math.min(vw, vh) / BOARD_SIZE * 0.9
@@ -51,7 +51,7 @@ function squareIcon(index: number) {
     case 'community': return '📚'
     case 'railroad':  return '🚌'
     case 'utility':   return index === 12 ? '⚙️' : '🚽'
-    case 'tax':       return '💸'
+    case 'tax':       return '📉'
     case 'go':        return '🏫'
     case 'go_to_jail': return '😱'
     case 'jail_visit': return '🔒'
@@ -132,7 +132,11 @@ function Square({
           <>
             {icon && <span className={styles.squareIcon}>{icon}</span>}
             <span className={styles.squareName}>{sq.name}</span>
-            {sq.price && <span className={styles.squarePrice}>€{sq.price}</span>}
+            {sq.price && (
+              <span className={styles.squarePrice}>
+                {sq.type === 'tax' ? `- €${sq.price}` : `€${sq.price}`}
+              </span>
+            )}
           </>
         )}
       </div>
@@ -203,7 +207,12 @@ export function Board2D() {
     <div className={styles.viewport}>
       <div
         className={styles.boardWrapper}
-        style={{ transform }}
+        style={{
+          transform,
+          transition: isAnimating
+            ? 'transform 0.18s ease-out'
+            : 'transform 0.75s cubic-bezier(0.4, 0, 0.2, 1)',
+        }}
       >
         <div className={styles.board}>
           {/* All 40 squares */}

@@ -215,6 +215,14 @@
   white-space: nowrap;
 }
 
+.myPropertiesWrapper {
+  position: absolute;
+  bottom: 150px;
+  left: 12px;
+  pointer-events: auto;
+  z-index: 15;
+}
+
 .log {
   position: absolute;
   bottom: 12px;

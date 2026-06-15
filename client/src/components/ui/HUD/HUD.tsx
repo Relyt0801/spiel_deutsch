@@ -6,6 +6,7 @@ import { PLAYER_COLORS, PIECE_LABELS } from '../../../types/game'
 import { BOARD_SQUARES } from '../../../config/boardData'
 import { BuildingPanel } from './BuildingPanel'
 import { TradePanel } from './TradePanel'
+import { MyPropertiesPanel } from './MyPropertiesPanel'
 import styles from './HUD.module.css'
 
 export function HUD() {
@@ -120,6 +121,13 @@ export function HUD() {
           {(isAnimating || diceAnimating) && (
             <div className={styles.animating}>⏳ Animiert...</div>
           )}
+        </div>
+      )}
+
+      {/* My Properties panel — bottom left above log */}
+      {myPlayer && (
+        <div className={styles.myPropertiesWrapper}>
+          <MyPropertiesPanel gameState={gameState} myId={myId} />
         </div>
       )}
 
