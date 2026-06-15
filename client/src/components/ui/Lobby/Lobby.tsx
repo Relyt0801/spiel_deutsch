@@ -20,7 +20,7 @@ export function Lobby() {
     getSocket().emit('room:start-game')
   }
 
-  const canStart = allPlayers.length >= 2
+  const canStart = allPlayers.length >= 1
 
   return (
     <div className={styles.container}>
@@ -52,7 +52,7 @@ export function Lobby() {
           ))}
           {allPlayers.length < 6 && (
             <div className={styles.waiting}>
-              ⏳ Warte auf Mitspieler... (min. 2)
+              ⏳ Warte auf Mitspieler...
             </div>
           )}
         </div>
@@ -63,7 +63,7 @@ export function Lobby() {
             onClick={handleStart}
             disabled={!canStart}
           >
-            {canStart ? '🎮 Spiel starten!' : `Noch ${2 - allPlayers.length} Spieler benötigt`}
+            {'🎮 Spiel starten!'}
           </button>
         ) : (
           <div className={styles.waitingHost}>

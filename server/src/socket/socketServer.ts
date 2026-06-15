@@ -63,8 +63,8 @@ export function setupSocketHandlers(io: Server): void {
     socket.on('room:start-game', () => {
       const room = roomManager.getRoomBySocket(socket.id)
       if (!room || room.hostId !== socket.id) return
-      if (room.lobbyPlayers.length < 2) {
-        socket.emit('room:error', { message: 'Mindestens 2 Spieler benötigt.' })
+      if (room.lobbyPlayers.length < 1) {
+        socket.emit('room:error', { message: 'Mindestens 1 Spieler benötigt.' })
         return
       }
       room.startGame()

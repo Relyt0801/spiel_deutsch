@@ -52,12 +52,18 @@ export function registerSocketHandlers(): void {
   socket.on('room:game-started', ({ gameState }) => {
     useGameStore.getState().setGameState(gameState)
     useUiStore.getState().setAppPhase('game')
-    // Camera to first player's starting position (field 0)
-    useUiStore.getState().setCameraTarget(0)
+    useUiStore.getState().setCameraTarget(null) // show full overview at game start
   })
 
   // ─── GAME STATE ────────────────────────────────────────────────────
+  let prevPhase: string | null = null
+
   socket.on('game:state-update', ({ gameState }) => {
+    // Reset camera to overview at start of each new turn
+    if (gameState.gamePhase === 'rolling' && prevPhase !== 'rolling') {
+      useUiStore.getState().setCameraTarget(null)
+    }
+    prevPhase = gameState.gamePhase
     useGameStore.getState().setGameState(gameState)
   })
 
