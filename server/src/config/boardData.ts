@@ -44,7 +44,7 @@ export const BOARD_SQUARES: BoardSquare[] = [
   { id: 21, name: 'Schulkeller', type: 'property', color: 'red', price: 220, houseCost: 150, rent: [18, 90, 250, 700, 875, 1050], mortgageValue: 110, group: 'red' },
   { id: 22, name: 'Ereignisfeld', type: 'chance', color: null, rent: [] },
   { id: 23, name: 'A-21', type: 'property', color: 'red', price: 220, houseCost: 150, rent: [18, 90, 250, 700, 875, 1050], mortgageValue: 110, group: 'red' },
-  { id: 24, name: "Fr. Prangenbergs Büro", type: 'property', color: 'red', price: 240, houseCost: 150, rent: [20, 100, 300, 750, 925, 1100], mortgageValue: 120, group: 'red' },
+  { id: 24, name: "SV-Raum", type: 'property', color: 'red', price: 240, houseCost: 150, rent: [20, 100, 300, 750, 925, 1100], mortgageValue: 120, group: 'red' },
   { id: 25, name: 'Sporthalle', type: 'railroad', color: 'railroad', price: 200, rent: [25, 50, 100, 200], mortgageValue: 100, group: 'railroad' },
   { id: 26, name: 'Tischtennispl.', type: 'property', color: 'yellow', price: 260, houseCost: 150, rent: [22, 110, 330, 800, 975, 1150], mortgageValue: 130, group: 'yellow' },
   { id: 27, name: 'Klettergerüst', type: 'property', color: 'yellow', price: 260, houseCost: 150, rent: [22, 110, 330, 800, 975, 1150], mortgageValue: 130, group: 'yellow' },
@@ -59,7 +59,7 @@ export const BOARD_SQUARES: BoardSquare[] = [
   { id: 36, name: 'Ereignisfeld', type: 'chance', color: null, rent: [] },
   { id: 37, name: 'BASE', type: 'property', color: 'dark_blue', price: 350, houseCost: 200, rent: [35, 175, 500, 1100, 1300, 1500], mortgageValue: 175, group: 'dark_blue' },
   { id: 38, name: 'Vertretung', type: 'tax', color: null, price: 100, rent: [] },
-  { id: 39, name: 'SV-Raum', type: 'property', color: 'dark_blue', price: 400, houseCost: 200, rent: [50, 200, 600, 1400, 1700, 2000], mortgageValue: 200, group: 'dark_blue' },
+  { id: 39, name: "Fr. Prangenbergs Büro", type: 'property', color: 'dark_blue', price: 400, houseCost: 200, rent: [50, 200, 600, 1400, 1700, 2000], mortgageValue: 200, group: 'dark_blue' },
 ]
 
 export const COLOR_GROUPS: Record<string, number[]> = {

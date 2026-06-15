@@ -20,7 +20,8 @@
   position: relative;
   width: 700px;
   height: 700px;
-  background: #E8D4B0;
+  box-sizing: content-box;
+  background: #EDD0A0;
   border: 3px solid #CC0000;
   box-shadow:
     0 0 0 7px #9B2020,
@@ -34,11 +35,11 @@
   box-sizing: border-box;
   border: 1px solid rgba(120, 70, 30, 0.35);
   overflow: hidden;
-  background: #E8D4B0;
+  background: #EDD0A0;
 }
 
 .square:hover {
-  background: #EDE0C4;
+  background: #F5DDB5;
   border-color: rgba(160, 80, 30, 0.6);
   z-index: 5;
 }
@@ -48,7 +49,7 @@
 .zoneTop    { display: flex; flex-direction: column-reverse; }
 .zoneLeft   { display: flex; flex-direction: row-reverse; }
 .zoneRight  { display: flex; flex-direction: row; }
-.zoneCorner { display: flex; flex-direction: column; background: #DFC8A0; }
+.zoneCorner { display: flex; flex-direction: column; background: #E0C490; }
 
 /* ─── Color strip ─────────────────────────────────────────────────────────── */
 .colorStrip {
@@ -93,12 +94,13 @@
 }
 
 .squareName {
-  font-size: 0.44rem;
+  font-size: 0.42rem;
   color: #3a1a0a;
   text-align: center;
-  line-height: 1.25;
+  line-height: 1.2;
   word-break: break-word;
-  hyphens: auto;
+  hyphens: none;
+  overflow-wrap: break-word;
   max-width: 100%;
   font-weight: 600;
 }
@@ -118,8 +120,9 @@
 
 .zoneLeft .squareName,
 .zoneRight .squareName {
-  font-size: 0.38rem;
-  line-height: 1.15;
+  font-size: 0.35rem;
+  line-height: 1.1;
+  hyphens: none;
 }
 
 /* ─── Corner squares ──────────────────────────────────────────────────────── */
@@ -256,7 +259,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  background: radial-gradient(ellipse at 50% 30%, #DFC8A0 0%, #D4BC96 60%, #C8AF88 100%);
+  background: radial-gradient(ellipse at 50% 30%, #E5C898 0%, #D9BC8E 60%, #CDAF82 100%);
   border: 1px solid rgba(120, 70, 30, 0.3);
   overflow: hidden;
 }
