@@ -131,9 +131,9 @@ export function registerSocketHandlers(): void {
     useGameStore.getState().setGameState(gameState)
     const myId = useSocketStore.getState().myPlayerId
     const currentPlayer = gameState.players[gameState.currentPlayerIndex]
-    if (currentPlayer?.id === myId) {
-      setTimeout(() => useUiStore.getState().openModal('card', { card, cardType }), 650)
-    }
+    const isMyTurn = currentPlayer?.id === myId
+    // Show to everyone; CardModal auto-dismisses for observers
+    setTimeout(() => useUiStore.getState().openModal('card', { card, cardType, isMyTurn }), 650)
   })
 
   // ─── AUCTION EVENTS ────────────────────────────────────────────────

@@ -1,12 +1,28 @@
 import { useState } from 'react'
 import type { GameState } from '../../../types/game'
-import { BOARD_SQUARES } from '../../../config/boardData'
+import { BOARD_SQUARES, PROPERTY_COLOR_HEX } from '../../../config/boardData'
+import { PLAYER_COLORS } from '../../../types/game'
 import { getSocket } from '../../../socket/socketClient'
 import styles from './TradePanel.module.css'
 
 interface Props {
   gameState: GameState
   myId: string | null
+}
+
+function PropertyTag({ index, selected, onClick }: { index: number; selected: boolean; onClick: () => void }) {
+  const sq = BOARD_SQUARES[index]
+  const colorHex = sq.color ? PROPERTY_COLOR_HEX[sq.color] : '#888'
+  return (
+    <button
+      className={`${styles.propTag} ${selected ? styles.propTagSelected : ''}`}
+      onClick={onClick}
+    >
+      <span className={styles.propDot} style={{ background: colorHex }} />
+      <span className={styles.propName}>{sq.name.replace('\n', ' ')}</span>
+      <span className={styles.propPrice}>{sq.price}€</span>
+    </button>
+  )
 }
 
 export function TradePanel({ gameState, myId }: Props) {
@@ -31,7 +47,6 @@ export function TradePanel({ gameState, myId }: Props) {
   if (otherPlayers.length === 0) return null
 
   const target = targetId ? gameState.players.find(p => p.id === targetId) : null
-
   const myTradable = me.properties.filter(i => !gameState.properties[i]?.isMortgaged)
   const theirTradable = (target?.properties || []).filter(i => !gameState.properties[i]?.isMortgaged)
 
@@ -59,77 +74,107 @@ export function TradePanel({ gameState, myId }: Props) {
   const canPropose = targetId && (offeredProps.length > 0 || offeredMoney > 0 || requestedProps.length > 0 || requestedMoney > 0)
 
   return (
-    <div className={styles.container}>
+    <>
       <button className={styles.toggle} onClick={() => setOpen(o => !o)}>
-        🤝 Handeln {open ? '▲' : '▼'}
+        🤝 Handeln
       </button>
 
       {open && (
-        <div className={styles.panel}>
-          <div className={styles.section}>
-            <div className={styles.label}>Mit wem handeln?</div>
-            <div className={styles.playerBtns}>
-              {otherPlayers.map(p => (
-                <button
-                  key={p.id}
-                  className={`${styles.playerBtn} ${targetId === p.id ? styles.active : ''}`}
-                  onClick={() => { setTargetId(p.id); setRequestedProps([]) }}
-                >
-                  {p.name} ({p.money.toLocaleString('de-DE')}€)
-                </button>
-              ))}
+        <div className={styles.overlay} onClick={() => setOpen(false)}>
+          <div className={styles.panel} onClick={e => e.stopPropagation()}>
+            <div className={styles.panelHeader}>
+              <span>🤝 Handel vorschlagen</span>
+              <button className={styles.closeBtn} onClick={() => setOpen(false)}>✕</button>
             </div>
-          </div>
 
-          {target && (
-            <>
-              <div className={styles.divider} />
-
-              <div className={styles.section}>
-                <div className={styles.label}>Du bietest:</div>
-                {myTradable.length === 0 && <div className={styles.empty}>Keine handelbaren Grundstücke</div>}
-                {myTradable.map(i => (
-                  <label key={i} className={styles.check}>
-                    <input type="checkbox" checked={offeredProps.includes(i)}
-                      onChange={() => toggle(offeredProps, setOfferedProps, i)} />
-                    {BOARD_SQUARES[i].name.replace('\n', ' ')}
-                  </label>
+            {/* Target player selection */}
+            <div className={styles.targetRow}>
+              <span className={styles.sectionLabel}>Mit wem handeln?</span>
+              <div className={styles.targetBtns}>
+                {otherPlayers.map(p => (
+                  <button
+                    key={p.id}
+                    className={`${styles.targetBtn} ${targetId === p.id ? styles.targetActive : ''}`}
+                    style={targetId === p.id ? { borderColor: PLAYER_COLORS[p.color as keyof typeof PLAYER_COLORS] } : {}}
+                    onClick={() => { setTargetId(p.id); setRequestedProps([]) }}
+                  >
+                    <span className={styles.targetDot} style={{ background: PLAYER_COLORS[p.color as keyof typeof PLAYER_COLORS] || '#888' }} />
+                    {p.name}
+                    {p.isBot && <span className={styles.botLabel}>🤖</span>}
+                  </button>
                 ))}
-                <div className={styles.moneyRow}>
-                  <span>+ Geld:</span>
-                  <input type="number" className={styles.numInput} min={0} max={me.money}
-                    value={offeredMoney || ''} placeholder="0"
-                    onChange={e => setOfferedMoney(Math.max(0, Math.min(me.money, parseInt(e.target.value) || 0)))} />
-                  <span>€</span>
+              </div>
+            </div>
+
+            {target && (
+              <div className={styles.columns}>
+                {/* LEFT: My side */}
+                <div className={styles.col}>
+                  <div className={styles.colHeader}>
+                    <span className={styles.colDot} style={{ background: PLAYER_COLORS[me.color as keyof typeof PLAYER_COLORS] || '#888' }} />
+                    <strong>{me.name}</strong>
+                    <span className={styles.money}>💰 {me.money.toLocaleString('de-DE')}€</span>
+                  </div>
+                  <div className={styles.colLabel}>Du bietest:</div>
+                  <div className={styles.propList}>
+                    {myTradable.length === 0 && <div className={styles.emptyMsg}>Keine Grundstücke</div>}
+                    {myTradable.map(i => (
+                      <PropertyTag key={i} index={i}
+                        selected={offeredProps.includes(i)}
+                        onClick={() => toggle(offeredProps, setOfferedProps, i)} />
+                    ))}
+                  </div>
+                  <div className={styles.moneyInput}>
+                    <span>+ Geld:</span>
+                    <input type="number" min={0} max={me.money}
+                      value={offeredMoney || ''}
+                      placeholder="0"
+                      onChange={e => setOfferedMoney(Math.max(0, Math.min(me.money, parseInt(e.target.value) || 0)))}
+                    />
+                    <span>€</span>
+                  </div>
+                </div>
+
+                <div className={styles.arrow}>⇄</div>
+
+                {/* RIGHT: Their side */}
+                <div className={styles.col}>
+                  <div className={styles.colHeader}>
+                    <span className={styles.colDot} style={{ background: PLAYER_COLORS[target.color as keyof typeof PLAYER_COLORS] || '#888' }} />
+                    <strong>{target.name}</strong>
+                    {target.isBot && <span className={styles.botLabel}>🤖</span>}
+                    <span className={styles.money}>💰 {target.money.toLocaleString('de-DE')}€</span>
+                  </div>
+                  <div className={styles.colLabel}>Du verlangst:</div>
+                  <div className={styles.propList}>
+                    {theirTradable.length === 0 && <div className={styles.emptyMsg}>Keine Grundstücke</div>}
+                    {theirTradable.map(i => (
+                      <PropertyTag key={i} index={i}
+                        selected={requestedProps.includes(i)}
+                        onClick={() => toggle(requestedProps, setRequestedProps, i)} />
+                    ))}
+                  </div>
+                  <div className={styles.moneyInput}>
+                    <span>+ Geld:</span>
+                    <input type="number" min={0}
+                      value={requestedMoney || ''}
+                      placeholder="0"
+                      onChange={e => setRequestedMoney(Math.max(0, parseInt(e.target.value) || 0))}
+                    />
+                    <span>€</span>
+                  </div>
                 </div>
               </div>
+            )}
 
-              <div className={styles.section}>
-                <div className={styles.label}>Du verlangst von {target.name}:</div>
-                {theirTradable.length === 0 && <div className={styles.empty}>Keine handelbaren Grundstücke</div>}
-                {theirTradable.map(i => (
-                  <label key={i} className={styles.check}>
-                    <input type="checkbox" checked={requestedProps.includes(i)}
-                      onChange={() => toggle(requestedProps, setRequestedProps, i)} />
-                    {BOARD_SQUARES[i].name.replace('\n', ' ')}
-                  </label>
-                ))}
-                <div className={styles.moneyRow}>
-                  <span>+ Geld:</span>
-                  <input type="number" className={styles.numInput} min={0}
-                    value={requestedMoney || ''} placeholder="0"
-                    onChange={e => setRequestedMoney(Math.max(0, parseInt(e.target.value) || 0))} />
-                  <span>€</span>
-                </div>
-              </div>
-
+            {target && (
               <button className={styles.proposeBtn} disabled={!canPropose} onClick={handlePropose}>
                 🤝 Handel vorschlagen
               </button>
-            </>
-          )}
+            )}
+          </div>
         </div>
       )}
-    </div>
+    </>
   )
 }

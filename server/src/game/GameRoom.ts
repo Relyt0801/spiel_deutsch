@@ -6,7 +6,7 @@ import {
   declareBankruptcy, handleEndTurn, advanceTurn, applyCardEffect,
 } from './GameEngine'
 import type { TradeOffer } from './GameEngine'
-import { BOARD_SQUARES } from '../config/boardData'
+import { BOARD_SQUARES, COLOR_GROUPS } from '../config/boardData'
 import { logger } from '../utils/logger'
 
 export type LobbyPlayer = {
@@ -162,9 +162,24 @@ export class GameRoom {
           }
           break
         }
-        case 'end_turn':
+        case 'end_turn': {
+          // 35% chance to try a trade before ending turn
+          if (Math.random() < 0.35) {
+            const tradeOffer = this.findBotTradeOpportunity(botId)
+            if (tradeOffer) {
+              this.state = proposeTrade(this.state, tradeOffer)
+              this.broadcast('trade:proposed', { trade: this.state.activeTrade })
+              this.broadcastState()
+              const receiver = this.state.players.find(p => p.id === tradeOffer.toPlayerId)
+              if (receiver?.isBot) {
+                this.scheduleBotTradeResponse(receiver.id, this.state.activeTrade!.id)
+              }
+              break
+            }
+          }
           this.handleEndTurn(botId)
           break
+        }
         case 'jail_decision':
           if (current.getOutOfJailCards > 0) {
             this.handleJailAction(botId, 'card')
@@ -177,6 +192,66 @@ export class GameRoom {
         case 'card_drawn':
           this.handleCardAcknowledge(botId)
           break
+      }
+    }, delay)
+    this.pendingBotTimers.add(timer)
+  }
+
+  private findBotTradeOpportunity(botId: string): Omit<TradeOffer, 'id' | 'status'> | null {
+    if (!this.state) return null
+    const bot = this.state.players.find(p => p.id === botId)
+    if (!bot) return null
+
+    for (const indices of Object.values(COLOR_GROUPS)) {
+      const botOwns = indices.filter(i => this.state!.properties[i]?.ownerId === botId)
+      if (botOwns.length === 0) continue
+      const needed = indices.filter(i => {
+        const owner = this.state!.properties[i]?.ownerId
+        return owner && owner !== botId
+      })
+      if (needed.length !== 1) continue
+
+      const targetPropIdx = needed[0]
+      const targetOwnerId = this.state.properties[targetPropIdx]?.ownerId
+      if (!targetOwnerId) continue
+      const targetPlayer = this.state.players.find(p => p.id === targetOwnerId)
+      if (!targetPlayer || targetPlayer.isBankrupt) continue
+
+      const propPrice = BOARD_SQUARES[targetPropIdx]?.price ?? 100
+      const offerMoney = Math.floor(propPrice * 1.4)
+      if (bot.money - offerMoney < 200) continue
+
+      return {
+        fromPlayerId: botId,
+        toPlayerId: targetOwnerId,
+        offeredProperties: [],
+        requestedProperties: [targetPropIdx],
+        offeredMoney: offerMoney,
+        requestedMoney: 0,
+      }
+    }
+    return null
+  }
+
+  private scheduleBotTradeResponse(botId: string, tradeId: string): void {
+    const delay = 2000 + Math.random() * 1500
+    const timer = setTimeout(() => {
+      this.pendingBotTimers.delete(timer)
+      if (!this.state?.activeTrade || this.state.activeTrade.id !== tradeId) return
+      const trade = this.state.activeTrade
+      const bot = this.state.players.find(p => p.id === botId)
+      if (!bot) return
+
+      const getVal = (props: number[]) =>
+        props.reduce((sum, i) => sum + (BOARD_SQUARES[i]?.price ?? 0), 0)
+
+      const receives = getVal(trade.offeredProperties) + trade.offeredMoney
+      const gives = getVal(trade.requestedProperties) + trade.requestedMoney
+
+      if (receives >= gives * 0.85) {
+        this.handleAcceptTrade(botId, tradeId)
+      } else {
+        this.handleRejectTrade(botId, tradeId)
       }
     }, delay)
     this.pendingBotTimers.add(timer)
@@ -359,6 +434,10 @@ export class GameRoom {
     this.state = proposeTrade(this.state, offer)
     this.broadcast('trade:proposed', { trade: this.state.activeTrade })
     this.broadcastState()
+    const receiver = this.state.players.find(p => p.id === offer.toPlayerId)
+    if (receiver?.isBot && this.state.activeTrade) {
+      this.scheduleBotTradeResponse(receiver.id, this.state.activeTrade.id)
+    }
   }
 
   handleAcceptTrade(socketId: string, tradeId: string): void {

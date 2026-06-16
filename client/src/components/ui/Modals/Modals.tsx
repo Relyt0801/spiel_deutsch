@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useUiStore } from '../../../store/uiStore'
 import { useGameStore } from '../../../store/gameStore'
 import { useSocketStore } from '../../../store/socketStore'
@@ -123,7 +123,15 @@ interface CardModalProps {
 function CardModal({ data, closeModal }: CardModalProps) {
   const cardType = data.cardType as 'chance' | 'community'
   const card = data.card as { id: string; text: string }
+  const isMyTurn = (data.isMyTurn as boolean) ?? false
   const isChance = cardType === 'chance'
+
+  useEffect(() => {
+    if (!isMyTurn) {
+      const t = setTimeout(() => closeModal(), 4000)
+      return () => clearTimeout(t)
+    }
+  }, [isMyTurn, closeModal])
 
   return (
     <div className={styles.cardModal}>
@@ -131,12 +139,16 @@ function CardModal({ data, closeModal }: CardModalProps) {
         {isChance ? '❓ Stundenplanwechsel' : '📋 Klassenbuch'}
       </div>
       <div className={styles.cardText}>{card.text}</div>
-      <button className={styles.btnClose} onClick={() => {
-        closeModal()
-        getSocket().emit('game:card-acknowledge')
-      }}>
-        OK, verstanden
-      </button>
+      {isMyTurn ? (
+        <button className={styles.btnClose} onClick={() => {
+          closeModal()
+          getSocket().emit('game:card-acknowledge')
+        }}>
+          OK, verstanden
+        </button>
+      ) : (
+        <p className={styles.smallText}>Schließt automatisch...</p>
+      )}
     </div>
   )
 }
