@@ -5,7 +5,6 @@ import { useUiStore } from '../../../store/uiStore'
 import { getSocket } from '../../../socket/socketClient'
 import { PLAYER_COLORS } from '../../../types/game'
 import { BuildingPanel } from './BuildingPanel'
-import { TradePanel } from './TradePanel'
 import { MyPropertiesPanel } from './MyPropertiesPanel'
 import styles from './HUD.module.css'
 
@@ -102,7 +101,12 @@ export function HUD() {
           )}
 
           <BuildingPanel gameState={gameState} myId={myId} />
-          <TradePanel gameState={gameState} myId={myId} />
+          {(phase === 'end_turn') && !gameState.activeTrade && (
+            <button className={styles.btnTrade}
+              onClick={() => useUiStore.getState().openModal('trade', null)}>
+              🤝 Handeln
+            </button>
+          )}
 
           {canRoll && (
             <button className={styles.btnRoll} onClick={handleRoll}>

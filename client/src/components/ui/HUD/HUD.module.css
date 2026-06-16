@@ -108,6 +108,20 @@
 }
 .btnEnd:hover { background: rgba(0,153,51,1); }
 
+.btnTrade {
+  background: rgba(0, 50, 150, 0.7);
+  color: white;
+  border: 1px solid rgba(100, 150, 255, 0.3);
+  border-radius: 12px;
+  padding: 0.65rem 1.25rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+  min-height: 44px;
+}
+.btnTrade:hover { background: rgba(0, 80, 200, 0.8); }
+
 .animating {
   color: rgba(255,255,255,0.5);
   font-size: 0.85rem;

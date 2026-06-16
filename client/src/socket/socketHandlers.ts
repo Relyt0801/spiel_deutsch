@@ -192,8 +192,16 @@ export function registerSocketHandlers(): void {
     }
   })
 
-  socket.on('trade:rejected', () => {
+  socket.on('trade:rejected', ({ trade }) => {
+    const gs = useGameStore.getState().gameState
     useUiStore.getState().closeModal()
+    if (gs && trade) {
+      const rejector = gs.players.find((p: { id: string; name: string }) => p.id === trade.toPlayerId)
+      if (rejector) {
+        useUiStore.getState().setError(`${rejector.name} hat den Tausch abgelehnt.`)
+        setTimeout(() => useUiStore.getState().setError(null), 3500)
+      }
+    }
   })
 
   // ─── END GAME ──────────────────────────────────────────────────────
