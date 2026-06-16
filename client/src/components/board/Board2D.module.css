@@ -59,6 +59,7 @@
   justify-content: center;
   gap: 1px;
   overflow: hidden;
+  position: relative;
 }
 
 .zoneBottom .colorStrip,
@@ -220,11 +221,28 @@
   font-weight: 900;
 }
 
-/* ─── Owner dot ───────────────────────────────────────────────────────────── */
-.ownerDot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
+/* ─── Owner bar (player color stripe across color strip) ──────────────────── */
+.ownerBar {
+  position: absolute;
+  inset: 0;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* ─── Free Parking money display ──────────────────────────────────────────── */
+.freeParkingInfo {
+  margin-top: 2px;
+}
+
+.freeParkingAmount {
+  font-size: 0.38rem;
+  font-weight: 700;
+  color: #2d6a2d;
+  background: rgba(100, 200, 100, 0.2);
+  border: 0.5px solid rgba(80, 160, 80, 0.5);
+  border-radius: 3px;
+  padding: 1px 3px;
+  white-space: nowrap;
 }
 
 /* ─── Mortgaged overlay ───────────────────────────────────────────────────── */

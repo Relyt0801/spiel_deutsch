@@ -75,12 +75,12 @@ function Buildings({ houses, hotel, zone }: { houses: number; hotel: boolean; zo
 }
 
 function Square({
-  index, players, propertyState, ownerId,
+  index, players, propertyState, freeParkingMoney,
 }: {
   index: number
   players: Array<{ id: string; color: string; piece: string; position: number }>
   propertyState?: { houses: number; hotel: boolean; isMortgaged: boolean; ownerId: string | null }
-  ownerId?: string | null
+  freeParkingMoney?: number
 }) {
   const sq = BOARD_SQUARES[index]
   if (!sq) return null
@@ -89,8 +89,9 @@ function Square({
   const colorHex = sq.color ? PROPERTY_COLOR_HEX[sq.color] : null
   const piecesHere = players.filter(p => p.position === index)
   const icon = squareIcon(index)
-  const isProperty = sq.type === 'property'
   const isMortgaged = propertyState?.isMortgaged ?? false
+  const ownerId = propertyState?.ownerId ?? null
+  const ownerColor = ownerId ? (PLAYER_COLORS[players.find(p => p.id === ownerId)?.color as keyof typeof PLAYER_COLORS] ?? null) : null
 
   const zoneClass = {
     corner: styles.zoneCorner,
@@ -111,11 +112,11 @@ function Square({
           className={styles.colorStrip}
           style={{ background: colorHex }}
         >
-          {propertyState && (
+          {propertyState && (propertyState.houses > 0 || propertyState.hotel) && (
             <Buildings houses={propertyState.houses} hotel={propertyState.hotel} zone={pos.zone} />
           )}
-          {ownerId && !propertyState && (
-            <div className={styles.ownerDot} style={{ background: '#d4af37' }} />
+          {ownerColor && !(propertyState?.houses || propertyState?.hotel) && (
+            <div className={styles.ownerBar} style={{ background: ownerColor }} />
           )}
         </div>
       )}
@@ -127,6 +128,11 @@ function Square({
             <span className={styles.cornerIcon}>{icon}</span>
             <span className={styles.cornerName}>{sq.name}</span>
             {index === 0 && <span className={styles.cornerSub}>+200€ →</span>}
+            {index === 20 && freeParkingMoney !== undefined && (
+              <div className={styles.freeParkingInfo}>
+                <span className={styles.freeParkingAmount}>💰 {freeParkingMoney}€</span>
+              </div>
+            )}
           </div>
         ) : (
           <>
@@ -197,6 +203,7 @@ export function Board2D() {
 
   const players = gameState?.players ?? []
   const properties = gameState?.properties ?? []
+  const freeParkingMoney = gameState?.freeParkingMoney ?? 0
 
   const getPropertyState = (index: number) =>
     properties.find(p => p.boardIndex === index)
@@ -219,7 +226,7 @@ export function Board2D() {
                 index={i}
                 players={players}
                 propertyState={ps ? { houses: ps.houses, hotel: ps.hotel, isMortgaged: ps.isMortgaged, ownerId: ps.ownerId } : undefined}
-                ownerId={ps?.ownerId}
+                freeParkingMoney={i === 20 ? freeParkingMoney : undefined}
               />
             )
           })}

@@ -90,6 +90,7 @@ export interface GameState {
   communityDiscardPile: string[]
   log: GameLog[]
   winnerId: string | null
+  freeParkingMoney: number
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -157,6 +158,7 @@ export function initGameState(
     communityDiscardPile: [],
     log: [{ timestamp: Date.now(), message: 'Spiel gestartet! Viel Spaß beim Remigianum Monopoly!', type: 'success' }],
     winnerId: null,
+    freeParkingMoney: 0,
   }
 }
 
@@ -221,8 +223,18 @@ export function applyLanding(state: GameState, playerId: string): {
   }
 
   if (square.type === 'free_parking') {
+    const collected = s.freeParkingMoney
+    s.freeParkingMoney = 0
+    if (collected > 0) {
+      s.players = s.players.map(p =>
+        p.id === playerId ? { ...p, money: p.money + collected } : p
+      )
+      s = addLog(s, `${player.name} erhält ${collected}€ aus der Freien Pause! ☕`, 'success')
+    } else {
+      s = addLog(s, `${player.name} macht eine Freie Pause. ☕`, 'info')
+    }
     s.gamePhase = 'end_turn'
-    return { newState: s, event: 'game:landed-free-parking', data: {} }
+    return { newState: s, event: 'game:landed-free-parking', data: { collected } }
   }
 
   if (square.type === 'tax') {
@@ -230,6 +242,7 @@ export function applyLanding(state: GameState, playerId: string): {
     s.players = s.players.map(p =>
       p.id === playerId ? { ...p, money: p.money - amount } : p
     )
+    s.freeParkingMoney += amount
     s = addLog(s, `${player.name} zahlt ${amount}€ Steuer (${square.name}).`, 'warning')
     s.gamePhase = 'end_turn'
     return { newState: s, event: 'game:landed-tax', data: { amount } }

@@ -107,6 +107,7 @@ export interface GameState {
   communityDiscardPile: string[]
   log: GameLog[]
   winnerId: string | null
+  freeParkingMoney: number
 }
 
 export const STARTING_MONEY = 1500

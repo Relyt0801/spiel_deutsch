@@ -97,7 +97,11 @@ export function registerSocketHandlers(): void {
   // ─── LANDING EVENTS ────────────────────────────────────────────────
   socket.on('game:landed-property', (data) => {
     useGameStore.getState().setGameState(data.gameState)
-    if (data.canBuy || data.rentDue !== null) {
+    const myId = useSocketStore.getState().myPlayerId
+    const currentPlayer = data.gameState.players[data.gameState.currentPlayerIndex]
+    const isMyTurn = currentPlayer?.id === myId
+    // Open modal only when I have a decision or I'm directly involved in rent
+    if ((data.canBuy && isMyTurn) || (data.rentDue !== null && (isMyTurn || data.ownerId === myId))) {
       setTimeout(() => useUiStore.getState().openModal('property', data), 650)
     }
   })
@@ -125,7 +129,11 @@ export function registerSocketHandlers(): void {
 
   socket.on('game:card-drawn', ({ card, cardType, gameState }) => {
     useGameStore.getState().setGameState(gameState)
-    setTimeout(() => useUiStore.getState().openModal('card', { card, cardType }), 650)
+    const myId = useSocketStore.getState().myPlayerId
+    const currentPlayer = gameState.players[gameState.currentPlayerIndex]
+    if (currentPlayer?.id === myId) {
+      setTimeout(() => useUiStore.getState().openModal('card', { card, cardType }), 650)
+    }
   })
 
   // ─── AUCTION EVENTS ────────────────────────────────────────────────
