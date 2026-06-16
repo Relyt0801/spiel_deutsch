@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import { useGameStore } from '../../../store/gameStore'
 import { useSocketStore } from '../../../store/socketStore'
 import { useUiStore } from '../../../store/uiStore'
@@ -15,6 +16,14 @@ export function HUD() {
   const diceAnimating = useUiStore(s => s.diceAnimating)
   const errorMessage = useUiStore(s => s.errorMessage)
   const setError = useUiStore(s => s.setError)
+
+  const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight })
+  useEffect(() => {
+    const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight })
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [])
+  const isMobile = viewport.w < 700 || viewport.h < 700
 
   if (!gameState) return null
 
@@ -54,6 +63,22 @@ export function HUD() {
           </span>
         )}
       </div>
+
+      {/* Mobile player strip — visible only when board center info is hidden */}
+      {isMobile && (
+        <div className={styles.mobilePlayerStrip}>
+          {gameState.players.map((p, i) => (
+            <div
+              key={p.id}
+              className={`${styles.mobileChip} ${i === gameState.currentPlayerIndex ? styles.mobileChipActive : ''} ${p.isBankrupt ? styles.mobileChipBankrupt : ''}`}
+            >
+              <div className={styles.mobileChipDot} style={{ background: PLAYER_COLORS[p.color] || '#888' }} />
+              <span className={styles.mobileChipName}>{p.name}{p.id === myId ? ' ✓' : ''}</span>
+              <span className={styles.mobileChipMoney}>{p.money.toLocaleString('de-DE')}€</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Action buttons bottom right */}
       {isMyTurn && (

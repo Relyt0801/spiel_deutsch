@@ -209,6 +209,7 @@ export function Board2D() {
     properties.find(p => p.boardIndex === index)
 
   const currentPlayer = gameState ? gameState.players[gameState.currentPlayerIndex] : null
+  const showCenterInfo = viewport.w >= 700 && viewport.h >= 700
 
   return (
     <div className={styles.viewport}>
@@ -239,7 +240,7 @@ export function Board2D() {
               <div className={styles.centerSub}>MONOPOLY</div>
             </div>
 
-            {gameState && (
+            {showCenterInfo && gameState && (
               <div className={styles.centerInfo}>
                 <div className={styles.turnRow}>
                   <div

@@ -74,7 +74,11 @@ export function registerSocketHandlers(): void {
       useUiStore.getState().setCameraTarget(null)
     }
     prevPhase = gameState.gamePhase
-    if (gameState.gamePhase !== 'buying' && useUiStore.getState().activeModal === 'property') {
+    // Close property modal when: phase leaves 'buying', OR it IS 'buying' but for another player
+    const myId = useSocketStore.getState().myPlayerId
+    const currentPlayer = gameState.players[gameState.currentPlayerIndex]
+    const isMyTurn = currentPlayer?.id === myId
+    if (useUiStore.getState().activeModal === 'property' && (gameState.gamePhase !== 'buying' || !isMyTurn)) {
       useUiStore.getState().closeModal()
     }
     useGameStore.getState().setGameState(gameState)
