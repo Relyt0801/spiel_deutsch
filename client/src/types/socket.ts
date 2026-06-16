@@ -31,9 +31,11 @@ export interface ClientToServerEvents {
   'auction:bid': (payload: { amount: number }) => void
   'auction:pass': () => void
 
-  'trade:propose': (payload: Omit<TradeOffer, 'id' | 'status'>) => void
+  'trade:propose': (payload: Omit<TradeOffer, 'id' | 'status' | 'confirmedBy'>) => void
   'trade:accept': (payload: { tradeId: string }) => void
   'trade:reject': (payload: { tradeId: string }) => void
+  'trade:counter': (payload: { offeredProperties: number[]; requestedProperties: number[]; offeredMoney: number; requestedMoney: number }) => void
+  'trade:confirm': (payload: { tradeId: string }) => void
 
   'game:declare-bankruptcy': () => void
 }
@@ -93,8 +95,10 @@ export interface ServerToClientEvents {
   'auction:tick': (payload: { timeRemaining: number }) => void
 
   'trade:proposed': (payload: { trade: TradeOffer }) => void
-  'trade:accepted': (payload: { trade: TradeOffer; gameState: GameState }) => void
+  'trade:accepted': (payload: { trade: TradeOffer | null; gameState: GameState }) => void
   'trade:rejected': (payload: { trade: TradeOffer }) => void
+  'trade:countered': (payload: { trade: TradeOffer }) => void
+  'trade:confirm-update': (payload: { trade: TradeOffer }) => void
 
   'game:player-bankrupt': (payload: { playerId: string; gameState: GameState }) => void
   'game:over': (payload: { winnerId: string; gameState: GameState }) => void

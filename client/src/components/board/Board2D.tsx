@@ -266,7 +266,7 @@ export function Board2D() {
                   ))}
                 </div>
                 <div className={styles.logArea}>
-                  {gameState.log.slice(-4).reverse().map((entry, i) => (
+                  {gameState.log.slice(-3).reverse().map((entry, i) => (
                     <div key={i} className={`${styles.logEntry} ${styles[entry.type]}`}>
                       {entry.message}
                     </div>

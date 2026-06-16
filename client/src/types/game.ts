@@ -66,7 +66,8 @@ export interface TradeOffer {
   requestedProperties: number[]
   offeredMoney: number
   requestedMoney: number
-  status: 'pending' | 'accepted' | 'rejected' | 'cancelled'
+  status: 'pending' | 'countered' | 'pending_confirm' | 'accepted' | 'rejected' | 'cancelled'
+  confirmedBy: string[]
 }
 
 export interface GameCard {

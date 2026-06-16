@@ -201,6 +201,16 @@ export function setupSocketHandlers(io: Server): void {
       room?.handleRejectTrade(socket.id, tradeId)
     })
 
+    socket.on('trade:counter', (terms) => {
+      const room = roomManager.getRoomBySocket(socket.id)
+      room?.handleCounterTrade(socket.id, terms)
+    })
+
+    socket.on('trade:confirm', ({ tradeId }) => {
+      const room = roomManager.getRoomBySocket(socket.id)
+      room?.handleConfirmTrade(socket.id, tradeId)
+    })
+
     // ─── BANKRUPTCY ──────────────────────────────────────────────────────
     socket.on('game:declare-bankruptcy', () => {
       const room = roomManager.getRoomBySocket(socket.id)

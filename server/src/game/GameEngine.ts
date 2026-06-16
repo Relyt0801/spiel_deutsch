@@ -46,7 +46,8 @@ export interface TradeOffer {
   requestedProperties: number[]
   offeredMoney: number
   requestedMoney: number
-  status: 'pending' | 'accepted' | 'rejected' | 'cancelled'
+  status: 'pending' | 'countered' | 'pending_confirm' | 'accepted' | 'rejected' | 'cancelled'
+  confirmedBy: string[]
 }
 
 export interface AuctionState {
@@ -677,9 +678,42 @@ export function unmortgage(state: GameState, playerId: string, propertyIndex: nu
   return s
 }
 
-export function proposeTrade(state: GameState, offer: Omit<TradeOffer, 'id' | 'status'>): GameState {
-  const trade: TradeOffer = { ...offer, id: uuidv4(), status: 'pending' }
+export function proposeTrade(state: GameState, offer: Omit<TradeOffer, 'id' | 'status' | 'confirmedBy'>): GameState {
+  const trade: TradeOffer = { ...offer, id: uuidv4(), status: 'pending', confirmedBy: [] }
   return { ...state, activeTrade: trade, gamePhase: 'trading' }
+}
+
+export function counterTrade(
+  state: GameState,
+  counterFromId: string,
+  terms: { offeredProperties: number[]; requestedProperties: number[]; offeredMoney: number; requestedMoney: number }
+): GameState {
+  if (!state.activeTrade) return state
+  const prev = state.activeTrade
+  const counter: TradeOffer = {
+    id: prev.id,
+    fromPlayerId: counterFromId,
+    toPlayerId: prev.fromPlayerId === counterFromId ? prev.toPlayerId : prev.fromPlayerId,
+    offeredProperties: terms.offeredProperties,
+    requestedProperties: terms.requestedProperties,
+    offeredMoney: terms.offeredMoney,
+    requestedMoney: terms.requestedMoney,
+    status: 'countered',
+    confirmedBy: [],
+  }
+  return { ...state, activeTrade: counter }
+}
+
+export function confirmTrade(state: GameState, playerId: string): GameState {
+  if (!state.activeTrade) return state
+  const trade = state.activeTrade
+  const confirmedBy = [...new Set([...trade.confirmedBy, playerId])]
+  const fromExists = state.players.find(p => p.id === trade.fromPlayerId && p.isActive)
+  const toExists = state.players.find(p => p.id === trade.toPlayerId && p.isActive)
+  if (fromExists && toExists && confirmedBy.includes(trade.fromPlayerId) && confirmedBy.includes(trade.toPlayerId)) {
+    return acceptTrade(state, trade.id)
+  }
+  return { ...state, activeTrade: { ...trade, status: 'pending_confirm', confirmedBy } }
 }
 
 export function acceptTrade(state: GameState, tradeId: string): GameState {

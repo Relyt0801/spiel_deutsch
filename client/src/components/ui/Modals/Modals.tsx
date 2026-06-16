@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useUiStore } from '../../../store/uiStore'
 import { useGameStore } from '../../../store/gameStore'
 import { useSocketStore } from '../../../store/socketStore'
@@ -17,9 +17,11 @@ export function Modals() {
 
   if (!activeModal || !gameState) return null
 
+  const isWide = activeModal === 'trade'
+
   return (
     <div className={styles.overlay}>
-      <div className={styles.modal}>
+      <div className={isWide ? styles.modalWide : styles.modal}>
         {activeModal === 'property' && (
           <PropertyModal data={modalData} myId={myId} gameState={gameState} closeModal={closeModal} />
         )}
@@ -285,78 +287,209 @@ interface TradeModalProps {
   closeModal: () => void
 }
 
+function TradeSide({ label, color, properties, money }: {
+  label: string; color: string; properties: number[]; money: number
+}) {
+  return (
+    <div className={styles.tradeCol}>
+      <div className={styles.tradeColHeader} style={{ borderColor: color }}>
+        <span className={styles.tradeColDot} style={{ background: color }} />
+        {label}
+      </div>
+      <div className={styles.tradePropList}>
+        {properties.map(i => (
+          <div key={i} className={styles.tradeProp}>
+            <span className={styles.tradePropDot} style={{ background: PROPERTY_COLOR_HEX[BOARD_SQUARES[i]?.color || ''] || '#888' }} />
+            {BOARD_SQUARES[i]?.name}
+          </div>
+        ))}
+        {money > 0 && <div className={styles.tradeMoney}>💰 {money.toLocaleString('de-DE')}€</div>}
+        {properties.length === 0 && money === 0 && <div className={styles.tradeNothing}>–</div>}
+      </div>
+    </div>
+  )
+}
+
 function TradeModal({ myId, gameState, closeModal }: TradeModalProps) {
   const trade = gameState.activeTrade as TradeOffer | null
+  const [showCounter, setShowCounter] = useState(false)
+  const [counterOfferedMoney, setCounterOfferedMoney] = useState('')
+  const [counterRequestedMoney, setCounterRequestedMoney] = useState('')
+  const [counterOfferedProps, setCounterOfferedProps] = useState<number[]>([])
+  const [counterRequestedProps, setCounterRequestedProps] = useState<number[]>([])
+
+  const resetCounter = useCallback(() => {
+    setShowCounter(false)
+    setCounterOfferedMoney('')
+    setCounterRequestedMoney('')
+    setCounterOfferedProps([])
+    setCounterRequestedProps([])
+  }, [])
+
+  useEffect(() => { resetCounter() }, [trade?.id, resetCounter])
+
   if (!trade) return null
 
   const fromPlayer = gameState.players.find(p => p.id === trade.fromPlayerId)
   const toPlayer = gameState.players.find(p => p.id === trade.toPlayerId)
-  const isReceiver = myId === trade.toPlayerId
+  const isFromPlayer = myId === trade.fromPlayerId
+  const isToPlayer = myId === trade.toPlayerId
+  const isInvolved = isFromPlayer || isToPlayer
+  const isObserver = !isInvolved
+
+  const fromColor = PLAYER_COLORS[fromPlayer?.color as keyof typeof PLAYER_COLORS] || '#888'
+  const toColor = PLAYER_COLORS[toPlayer?.color as keyof typeof PLAYER_COLORS] || '#888'
+
+  const myPlayer = isFromPlayer ? fromPlayer : toPlayer
+  const myProps = myPlayer?.properties ?? []
+
+  const isPendingConfirm = trade.status === 'pending_confirm'
+  const iHaveConfirmed = isPendingConfirm && trade.confirmedBy.includes(myId ?? '')
+
+  const toggleProp = (idx: number, list: number[], setList: (v: number[]) => void) => {
+    setList(list.includes(idx) ? list.filter(i => i !== idx) : [...list, idx])
+  }
+
+  const submitCounter = () => {
+    getSocket().emit('trade:counter', {
+      offeredProperties: counterOfferedProps,
+      requestedProperties: counterRequestedProps,
+      offeredMoney: parseInt(counterOfferedMoney) || 0,
+      requestedMoney: parseInt(counterRequestedMoney) || 0,
+    })
+    resetCounter()
+  }
+
+  const otherPlayer = isFromPlayer ? toPlayer : fromPlayer
+  const otherProps = otherPlayer?.properties ?? []
 
   return (
-    <div>
-      <h2 className={styles.modalTitle}>🤝 Handelsangebot</h2>
-      <p className={styles.tradeMeta}>
-        <strong>{fromPlayer?.name}</strong> möchte mit <strong>{toPlayer?.name}</strong> handeln
-      </p>
-
-      <div className={styles.tradeColumns}>
-        <div className={styles.tradeCol}>
-          <div className={styles.tradeColHeader} style={{ color: PLAYER_COLORS[fromPlayer?.color || 'red'] }}>
-            {fromPlayer?.name} bietet:
-          </div>
-          {trade.offeredProperties.length > 0 && trade.offeredProperties.map(i => (
-            <div key={i} className={styles.tradeProp}>
-              {BOARD_SQUARES[i].name.replace('\n', ' ')}
-            </div>
-          ))}
-          {trade.offeredMoney > 0 && (
-            <div className={styles.tradeMoney}>💰 {trade.offeredMoney.toLocaleString('de-DE')}€</div>
-          )}
-          {trade.offeredProperties.length === 0 && trade.offeredMoney === 0 && (
-            <div className={styles.tradeNothing}>Nichts</div>
-          )}
-        </div>
-
-        <div className={styles.tradeArrow}>⇄</div>
-
-        <div className={styles.tradeCol}>
-          <div className={styles.tradeColHeader} style={{ color: PLAYER_COLORS[toPlayer?.color || 'blue'] }}>
-            {toPlayer?.name} gibt:
-          </div>
-          {trade.requestedProperties.length > 0 && trade.requestedProperties.map(i => (
-            <div key={i} className={styles.tradeProp}>
-              {BOARD_SQUARES[i].name.replace('\n', ' ')}
-            </div>
-          ))}
-          {trade.requestedMoney > 0 && (
-            <div className={styles.tradeMoney}>💰 {trade.requestedMoney.toLocaleString('de-DE')}€</div>
-          )}
-          {trade.requestedProperties.length === 0 && trade.requestedMoney === 0 && (
-            <div className={styles.tradeNothing}>Nichts</div>
-          )}
-        </div>
+    <div className={styles.tradeWrap}>
+      <div className={styles.tradeHeader}>
+        <span className={styles.tradeTitle}>🤝 Handelsangebot</span>
+        <span className={styles.tradeMeta}>
+          <strong style={{ color: fromColor }}>{fromPlayer?.name}</strong>
+          {' ⇄ '}
+          <strong style={{ color: toColor }}>{toPlayer?.name}</strong>
+        </span>
       </div>
 
-      {isReceiver ? (
+      {isPendingConfirm && (
+        <div className={styles.tradeConfirmBanner}>
+          ✅ Angebot angenommen – beide müssen bestätigen
+          <div className={styles.tradeConfirmAvatars}>
+            {[fromPlayer, toPlayer].map(p => p && (
+              <span key={p.id} className={`${styles.tradeConfirmBadge} ${trade.confirmedBy.includes(p.id) ? styles.tradeConfirmed : ''}`}
+                style={{ borderColor: PLAYER_COLORS[p.color as keyof typeof PLAYER_COLORS] || '#888' }}>
+                {p.name} {trade.confirmedBy.includes(p.id) ? '✓' : '…'}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className={styles.tradeColumns}>
+        <TradeSide
+          label={`${fromPlayer?.name} bietet`}
+          color={fromColor}
+          properties={trade.offeredProperties}
+          money={trade.offeredMoney}
+        />
+        <div className={styles.tradeArrow}>⇄</div>
+        <TradeSide
+          label={`${toPlayer?.name} gibt`}
+          color={toColor}
+          properties={trade.requestedProperties}
+          money={trade.requestedMoney}
+        />
+      </div>
+
+      {isObserver && !isPendingConfirm && (
+        <div className={styles.tradeWaiting}>👀 Handel läuft – du bist Zuschauer</div>
+      )}
+
+      {!isPendingConfirm && isToPlayer && !showCounter && (
         <div className={styles.btnRow}>
-          <button className={styles.btnBuy} onClick={() => {
-            getSocket().emit('trade:accept', { tradeId: trade.id })
-            closeModal()
-          }}>
+          <button className={styles.btnBuy} onClick={() => getSocket().emit('trade:accept', { tradeId: trade.id })}>
             ✅ Annehmen
           </button>
-          <button className={styles.btnAuction} onClick={() => {
-            getSocket().emit('trade:reject', { tradeId: trade.id })
-            closeModal()
-          }}>
+          <button className={styles.btnAuction} onClick={() => setShowCounter(true)}>
+            🔄 Gegenangebot
+          </button>
+          <button className={styles.btnEnd} onClick={() => { getSocket().emit('trade:reject', { tradeId: trade.id }); closeModal() }}>
             ❌ Ablehnen
           </button>
         </div>
-      ) : (
-        <div className={styles.tradeWaiting}>
-          ⏳ Warte auf Antwort von {toPlayer?.name}...
+      )}
+
+      {!isPendingConfirm && isFromPlayer && (
+        <div className={styles.tradeWaiting}>⏳ Warte auf Antwort von {toPlayer?.name}…</div>
+      )}
+
+      {showCounter && isToPlayer && (
+        <div className={styles.counterSection}>
+          <div className={styles.counterTitle}>Dein Gegenangebot</div>
+          <div className={styles.counterColumns}>
+            <div className={styles.counterCol}>
+              <div className={styles.counterColLabel} style={{ color: toColor }}>Du bietest (deine Straßen)</div>
+              <div className={styles.counterPropList}>
+                {myProps.map(i => (
+                  <button key={i} className={`${styles.counterPropBtn} ${counterOfferedProps.includes(i) ? styles.counterSelected : ''}`}
+                    onClick={() => toggleProp(i, counterOfferedProps, setCounterOfferedProps)}>
+                    <span className={styles.tradePropDot} style={{ background: PROPERTY_COLOR_HEX[BOARD_SQUARES[i]?.color || ''] || '#888' }} />
+                    {BOARD_SQUARES[i]?.name}
+                  </button>
+                ))}
+              </div>
+              <div className={styles.counterMoneyRow}>
+                <span>+ Geld:</span>
+                <input type="number" className={styles.counterInput} value={counterOfferedMoney}
+                  placeholder="0" min={0} max={myPlayer?.money ?? 0}
+                  onChange={e => setCounterOfferedMoney(e.target.value)} />
+                <span>€</span>
+              </div>
+            </div>
+            <div className={styles.tradeArrow}>⇄</div>
+            <div className={styles.counterCol}>
+              <div className={styles.counterColLabel} style={{ color: fromColor }}>Du verlangst (deren Straßen)</div>
+              <div className={styles.counterPropList}>
+                {otherProps.map(i => (
+                  <button key={i} className={`${styles.counterPropBtn} ${counterRequestedProps.includes(i) ? styles.counterSelected : ''}`}
+                    onClick={() => toggleProp(i, counterRequestedProps, setCounterRequestedProps)}>
+                    <span className={styles.tradePropDot} style={{ background: PROPERTY_COLOR_HEX[BOARD_SQUARES[i]?.color || ''] || '#888' }} />
+                    {BOARD_SQUARES[i]?.name}
+                  </button>
+                ))}
+              </div>
+              <div className={styles.counterMoneyRow}>
+                <span>+ Geld:</span>
+                <input type="number" className={styles.counterInput} value={counterRequestedMoney}
+                  placeholder="0" min={0}
+                  onChange={e => setCounterRequestedMoney(e.target.value)} />
+                <span>€</span>
+              </div>
+            </div>
+          </div>
+          <div className={styles.btnRow}>
+            <button className={styles.btnBuy} onClick={submitCounter}>📨 Senden</button>
+            <button className={styles.btnEnd} onClick={resetCounter}>Abbrechen</button>
+          </div>
         </div>
+      )}
+
+      {isPendingConfirm && isInvolved && !iHaveConfirmed && (
+        <div className={styles.btnRow}>
+          <button className={styles.btnBuy} onClick={() => getSocket().emit('trade:confirm', { tradeId: trade.id })}>
+            ✅ Bestätigen
+          </button>
+          <button className={styles.btnEnd} onClick={() => { getSocket().emit('trade:reject', { tradeId: trade.id }); closeModal() }}>
+            ❌ Ablehnen
+          </button>
+        </div>
+      )}
+
+      {isPendingConfirm && iHaveConfirmed && (
+        <div className={styles.tradeWaiting}>⏳ Du hast bestätigt – warte auf die andere Seite…</div>
       )}
     </div>
   )

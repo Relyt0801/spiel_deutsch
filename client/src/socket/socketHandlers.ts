@@ -74,6 +74,9 @@ export function registerSocketHandlers(): void {
       useUiStore.getState().setCameraTarget(null)
     }
     prevPhase = gameState.gamePhase
+    if (gameState.gamePhase !== 'buying' && useUiStore.getState().activeModal === 'property') {
+      useUiStore.getState().closeModal()
+    }
     useGameStore.getState().setGameState(gameState)
   })
 
@@ -167,8 +170,22 @@ export function registerSocketHandlers(): void {
   })
 
   socket.on('trade:accepted', ({ gameState }) => {
-    useGameStore.getState().setGameState(gameState)
+    if (gameState) useGameStore.getState().setGameState(gameState)
     useUiStore.getState().closeModal()
+  })
+
+  socket.on('trade:countered', ({ trade }) => {
+    const gs = useGameStore.getState().gameState
+    if (gs) useGameStore.getState().setGameState({ ...gs, activeTrade: trade })
+    useUiStore.getState().openModal('trade', { trade })
+  })
+
+  socket.on('trade:confirm-update', ({ trade }) => {
+    const gs = useGameStore.getState().gameState
+    if (gs) useGameStore.getState().setGameState({ ...gs, activeTrade: trade })
+    if (useUiStore.getState().activeModal !== 'trade') {
+      useUiStore.getState().openModal('trade', { trade })
+    }
   })
 
   socket.on('trade:rejected', () => {

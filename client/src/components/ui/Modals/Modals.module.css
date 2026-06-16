@@ -216,43 +216,88 @@
 .bidInput::placeholder { color: rgba(255,255,255,0.3); }
 
 /* ── Trade ── */
+.modalWide {
+  background: #1a1a2e;
+  border: 1px solid rgba(204,0,0,0.4);
+  border-radius: 16px;
+  padding: 1.5rem;
+  width: min(760px, 96vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.55);
+}
+
+.tradeWrap { display: flex; flex-direction: column; gap: 1rem; }
+
+.tradeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.tradeTitle {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: white;
+}
+
 .tradeMeta {
-  font-size: 0.88rem;
-  color: rgba(255,255,255,0.6);
-  margin-bottom: 0.9rem;
+  font-size: 0.9rem;
+  color: rgba(255,255,255,0.7);
 }
 
 .tradeColumns {
-  display: flex;
-  gap: 0.5rem;
-  align-items: flex-start;
-  margin-bottom: 1rem;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.75rem;
+  align-items: start;
 }
 
 .tradeCol {
-  flex: 1;
   background: rgba(255,255,255,0.04);
-  border-radius: 8px;
-  padding: 0.6rem;
+  border-radius: 10px;
+  padding: 0.75rem;
 }
 
 .tradeColHeader {
-  font-size: 0.72rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  margin-bottom: 6px;
+  color: white;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 2px solid transparent;
 }
 
+.tradeColDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tradePropList { display: flex; flex-direction: column; gap: 3px; }
+
 .tradeProp {
-  font-size: 0.78rem;
-  color: rgba(255,255,255,0.75);
-  padding: 2px 0;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.8rem;
+  color: rgba(255,255,255,0.8);
+  padding: 3px 0;
   border-bottom: 1px solid rgba(255,255,255,0.05);
 }
 
+.tradePropDot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
 .tradeMoney {
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   color: #FFD700;
   font-weight: 600;
   margin-top: 4px;
@@ -264,21 +309,124 @@
 }
 
 .tradeArrow {
-  font-size: 1.4rem;
+  font-size: 1.5rem;
   color: rgba(255,255,255,0.3);
   align-self: center;
   flex-shrink: 0;
+  text-align: center;
 }
 
 .tradeWaiting {
   text-align: center;
   font-size: 0.85rem;
   color: rgba(255,255,255,0.45);
-  padding: 0.5rem;
+  padding: 0.6rem;
   background: rgba(255,255,255,0.04);
   border-radius: 8px;
-  margin-top: 0.5rem;
 }
+
+.tradeConfirmBanner {
+  background: rgba(0,180,80,0.12);
+  border: 1px solid rgba(0,220,100,0.3);
+  border-radius: 8px;
+  padding: 0.6rem 0.75rem;
+  font-size: 0.85rem;
+  color: #4ade80;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.tradeConfirmAvatars { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.tradeConfirmBadge {
+  padding: 2px 10px;
+  border-radius: 20px;
+  border: 2px solid;
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.55);
+}
+
+.tradeConfirmed { color: #4ade80; }
+
+/* Counter offer */
+.counterSection {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.counterTitle {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.7);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.counterColumns {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.counterCol { display: flex; flex-direction: column; gap: 6px; }
+
+.counterColLabel {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 2px;
+}
+
+.counterPropList { display: flex; flex-direction: column; gap: 3px; }
+
+.counterPropBtn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 5px;
+  padding: 3px 7px;
+  font-size: 0.75rem;
+  color: rgba(255,255,255,0.7);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s;
+}
+.counterPropBtn:hover { background: rgba(255,255,255,0.1); }
+.counterSelected {
+  background: rgba(0,180,80,0.15) !important;
+  border-color: rgba(0,220,100,0.4) !important;
+  color: #4ade80 !important;
+}
+
+.counterMoneyRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.5);
+  margin-top: 4px;
+}
+
+.counterInput {
+  width: 70px;
+  background: rgba(255,255,255,0.08);
+  color: white;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 5px;
+  padding: 2px 6px;
+  font-size: 0.8rem;
+}
+.counterInput:focus { outline: none; border-color: rgba(204,0,0,0.5); }
 
 /* ── Winner ── */
 .winnerModal { text-align: center; padding: 0.5rem 0; }

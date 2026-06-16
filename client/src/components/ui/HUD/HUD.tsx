@@ -2,8 +2,7 @@ import { useGameStore } from '../../../store/gameStore'
 import { useSocketStore } from '../../../store/socketStore'
 import { useUiStore } from '../../../store/uiStore'
 import { getSocket } from '../../../socket/socketClient'
-import { PLAYER_COLORS, PIECE_LABELS } from '../../../types/game'
-import { BOARD_SQUARES } from '../../../config/boardData'
+import { PLAYER_COLORS } from '../../../types/game'
 import { BuildingPanel } from './BuildingPanel'
 import { TradePanel } from './TradePanel'
 import { MyPropertiesPanel } from './MyPropertiesPanel'
@@ -54,25 +53,6 @@ export function HUD() {
             {gameState.currentDiceRoll.isDouble && ' (Pasch! 🎉)'}
           </span>
         )}
-      </div>
-
-      {/* Players sidebar */}
-      <div className={styles.sidebar}>
-        {gameState.players.map((p, i) => (
-          <div
-            key={p.id}
-            className={`${styles.playerCard} ${i === gameState.currentPlayerIndex ? styles.active : ''} ${p.isBankrupt ? styles.bankrupt : ''}`}
-          >
-            <div className={styles.playerHeader}>
-              <div className={styles.playerDot} style={{ background: PLAYER_COLORS[p.color] || '#ccc' }} />
-              <span className={styles.playerName}>{p.name}{p.id === myId ? ' (Du)' : ''}</span>
-              <span className={styles.playerPiece}>{PIECE_LABELS[p.piece] || '●'}</span>
-            </div>
-            <div className={styles.playerMoney}>💰 {p.money.toLocaleString('de-DE')}€</div>
-            <div className={styles.playerPos}>📍 {BOARD_SQUARES[p.position]?.name.replace('\n', ' ')}</div>
-            {p.jailTurns > 0 && <div className={styles.jailBadge}>🔒 Nachsitzen ({p.jailTurns}/3)</div>}
-          </div>
-        ))}
       </div>
 
       {/* Action buttons bottom right */}
@@ -131,14 +111,6 @@ export function HUD() {
         </div>
       )}
 
-      {/* Game log bottom left */}
-      <div className={styles.log}>
-        {gameState.log.slice(-6).reverse().map((entry, i) => (
-          <div key={i} className={`${styles.logEntry} ${styles[entry.type]}`}>
-            {entry.message}
-          </div>
-        ))}
-      </div>
     </div>
   )
 }
