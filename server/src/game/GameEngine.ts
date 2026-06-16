@@ -20,6 +20,7 @@ export interface Player {
   isBankrupt: boolean
   isActive: boolean
   doublesCount: number
+  isBot: boolean
 }
 
 export interface PropertyState {
@@ -108,7 +109,7 @@ function addLog(state: GameState, message: string, type: GameLog['type'] = 'info
 }
 
 export function initGameState(
-  players: Array<{ id: string; name: string; color: string; piece: string }>,
+  players: Array<{ id: string; name: string; color: string; piece: string; isBot?: boolean }>,
   roomCode: string,
   hostId: string,
 ): GameState {
@@ -123,6 +124,7 @@ export function initGameState(
     jailTurns: 0,
     getOutOfJailCards: 0,
     isBankrupt: false,
+    isBot: p.isBot ?? false,
     isActive: true,
     doublesCount: 0,
   }))

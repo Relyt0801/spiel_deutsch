@@ -1,20 +1,31 @@
 import type { Server } from 'socket.io'
 import {
   GameState, Player, initGameState, rollDice, movePlayer, applyLanding,
-  buyProperty, sendToJail, startAuction, placeBid, passAuction, endAuction,
+  buyProperty, startAuction, placeBid, passAuction, endAuction,
   buyHouse, buyHotel, sellHouse, sellHotel, mortgage, unmortgage, proposeTrade, acceptTrade,
   declareBankruptcy, handleEndTurn, advanceTurn, applyCardEffect,
 } from './GameEngine'
 import type { TradeOffer } from './GameEngine'
+import { BOARD_SQUARES } from '../config/boardData'
 import { logger } from '../utils/logger'
+
+export type LobbyPlayer = {
+  id: string
+  name: string
+  color: string
+  piece: string
+  isBot: boolean
+}
 
 export class GameRoom {
   code: string
   hostId: string
   state: GameState | null = null
-  lobbyPlayers: Array<{ id: string; name: string; color: string; piece: string }> = []
+  lobbyPlayers: LobbyPlayer[] = []
+  readyPlayers: Set<string> = new Set()
   auctionTimer: NodeJS.Timeout | null = null
   private io: Server
+  private pendingBotTimers: Set<ReturnType<typeof setTimeout>> = new Set()
 
   constructor(code: string, hostId: string, io: Server) {
     this.code = code
@@ -22,22 +33,84 @@ export class GameRoom {
     this.io = io
   }
 
+  // ─── Lobby management ────────────────────────────────────────────────────
+
   addLobbyPlayer(id: string, name: string, color: string, piece: string): void {
-    this.lobbyPlayers.push({ id, name, color, piece })
+    this.lobbyPlayers.push({ id, name, color, piece, isBot: false })
+    this.broadcastLobbyUpdate()
+  }
+
+  addBot(): void {
+    if (this.lobbyPlayers.length >= 6) return
+    const botColors = ['red', 'blue', 'green', 'yellow', 'purple', 'orange']
+    const botPieces = ['Radiergummi', 'Lineal', 'Bleistift', 'Spitzer', 'Tintenfüller', 'Buch']
+    const takenColors = this.lobbyPlayers.map(p => p.color)
+    const takenPieces = this.lobbyPlayers.map(p => p.piece)
+    const color = botColors.find(c => !takenColors.includes(c)) ?? 'blue'
+    const piece = botPieces.find(p => !takenPieces.includes(p)) ?? 'Radiergummi'
+    const botCount = this.lobbyPlayers.filter(p => p.isBot).length + 1
+    const botId = `bot_${Date.now()}_${botCount}`
+    this.lobbyPlayers.push({ id: botId, name: `Bot ${botCount}`, color, piece, isBot: true })
+    this.readyPlayers.add(botId)
+    this.broadcastLobbyUpdate()
+  }
+
+  kickPlayer(playerId: string): void {
+    const player = this.lobbyPlayers.find(p => p.id === playerId)
+    if (!player) return
+    this.lobbyPlayers = this.lobbyPlayers.filter(p => p.id !== playerId)
+    this.readyPlayers.delete(playerId)
+    if (!player.isBot) {
+      this.io.to(playerId).emit('room:kicked')
+    }
+    this.broadcastLobbyUpdate()
+  }
+
+  toggleReady(socketId: string): void {
+    if (this.readyPlayers.has(socketId)) {
+      this.readyPlayers.delete(socketId)
+    } else {
+      this.readyPlayers.add(socketId)
+    }
+    this.broadcastLobbyUpdate()
+  }
+
+  areAllHumansReady(): boolean {
+    const nonHostHumans = this.lobbyPlayers.filter(p => !p.isBot && p.id !== this.hostId)
+    return nonHostHumans.every(p => this.readyPlayers.has(p.id))
+  }
+
+  getLobbyWithStatus(): Array<LobbyPlayer & { isReady: boolean }> {
+    return this.lobbyPlayers.map(p => ({
+      ...p,
+      isReady: p.isBot || this.readyPlayers.has(p.id),
+    }))
   }
 
   removeLobbyPlayer(id: string): void {
     this.lobbyPlayers = this.lobbyPlayers.filter(p => p.id !== id)
+    this.readyPlayers.delete(id)
     if (this.state) {
       this.state.players = this.state.players.map(p =>
         p.id === id ? { ...p, isActive: false } : p
       )
     }
+    this.broadcastLobbyUpdate()
   }
 
   startGame(): void {
     this.state = initGameState(this.lobbyPlayers, this.code, this.hostId)
     this.broadcastState()
+  }
+
+  // ─── Broadcasts ──────────────────────────────────────────────────────────
+
+  broadcastLobbyUpdate(): void {
+    this.io.to(this.code).emit('room:lobby-update', {
+      lobbyPlayers: this.getLobbyWithStatus(),
+      hostId: this.hostId,
+      allReady: this.areAllHumansReady(),
+    })
   }
 
   private broadcast(event: string, data: Record<string, unknown>): void {
@@ -46,7 +119,89 @@ export class GameRoom {
 
   broadcastState(): void {
     this.broadcast('game:state-update', { gameState: this.state })
+    this.scheduleBotAction()
   }
+
+  // ─── Bot AI ───────────────────────────────────────────────────────────────
+
+  private scheduleBotAction(): void {
+    if (!this.state) return
+    const cp = this.state.players[this.state.currentPlayerIndex]
+    if (!cp?.isBot) return
+    if (this.state.gamePhase === 'moving') return
+
+    const botId = cp.id
+    const phase = this.state.gamePhase
+    const delay = phase === 'rolling' ? 1500 : 1000
+
+    const timer = setTimeout(() => {
+      this.pendingBotTimers.delete(timer)
+      if (!this.state) return
+      const current = this.state.players[this.state.currentPlayerIndex]
+      if (current?.id !== botId) return
+
+      switch (this.state.gamePhase) {
+        case 'rolling': {
+          this.handleRollDice(botId)
+          const steps = this.state?.currentDiceRoll?.total ?? 6
+          const moveTimer = setTimeout(() => {
+            this.pendingBotTimers.delete(moveTimer)
+            if (this.state?.gamePhase === 'moving') {
+              this.handleMovementComplete(botId)
+            }
+          }, 2200 + steps * 380 + 600)
+          this.pendingBotTimers.add(moveTimer)
+          break
+        }
+        case 'buying': {
+          const sq = BOARD_SQUARES[current.position]
+          if (current.money >= (sq?.price ?? Infinity)) {
+            this.handleBuyProperty(botId)
+          } else {
+            this.handleDeclineProperty(botId)
+          }
+          break
+        }
+        case 'end_turn':
+          this.handleEndTurn(botId)
+          break
+        case 'jail_decision':
+          if (current.getOutOfJailCards > 0) {
+            this.handleJailAction(botId, 'card')
+          } else if (current.money >= 50) {
+            this.handleJailAction(botId, 'pay')
+          } else {
+            this.handleJailAction(botId, 'roll')
+          }
+          break
+        case 'card_drawn':
+          this.handleCardAcknowledge(botId)
+          break
+      }
+    }, delay)
+    this.pendingBotTimers.add(timer)
+  }
+
+  private scheduleBotAuctionBid(botId: string, botMoney: number, propertyPrice: number): void {
+    const delay = 1500 + Math.random() * 1500
+    const timer = setTimeout(() => {
+      this.pendingBotTimers.delete(timer)
+      if (!this.state?.auction) return
+      const bot = this.state.players.find(p => p.id === botId)
+      if (!bot || bot.isBankrupt) return
+      const auction = this.state.auction
+      if (auction.passedPlayers.includes(botId)) return
+      const maxBid = Math.min(Math.floor(propertyPrice * 0.75), bot.money - 200)
+      if (bot.money > auction.highestBid + 10 && auction.highestBid < maxBid) {
+        this.handleAuctionBid(botId, auction.highestBid + 10)
+      } else {
+        this.handleAuctionPass(botId)
+      }
+    }, delay)
+    this.pendingBotTimers.add(timer)
+  }
+
+  // ─── Game event handlers ─────────────────────────────────────────────────
 
   handleRollDice(socketId: string): void {
     if (!this.state) return
@@ -56,10 +211,8 @@ export class GameRoom {
 
     const roll = rollDice()
     this.state = { ...this.state, currentDiceRoll: roll, gamePhase: 'moving' }
-
     this.broadcast('game:dice-rolled', { playerId: socketId, roll, gameState: this.state })
 
-    // Send step-by-step movement events after dice animation (~2s)
     const steps = roll.total
     const startPos = currentPlayer.position
     const DICE_ANIM_MS = 2000
@@ -83,7 +236,6 @@ export class GameRoom {
     if (!this.state) return
     const currentPlayer = this.state.players[this.state.currentPlayerIndex]
     if (currentPlayer.id !== socketId) return
-
     this.state = movePlayer(this.state, socketId, this.state.currentDiceRoll!)
     const { newState, event, data } = applyLanding(this.state, socketId)
     this.state = newState
@@ -103,30 +255,29 @@ export class GameRoom {
     if (!this.state) return
     const currentPlayer = this.state.players[this.state.currentPlayerIndex]
     if (currentPlayer.id !== socketId || this.state.gamePhase !== 'buying') return
-    this.state = startAuction(this.state, currentPlayer.position)
+    const propertyIndex = currentPlayer.position
+    const sq = BOARD_SQUARES[propertyIndex]
+    this.state = startAuction(this.state, propertyIndex)
     this.startAuctionTimer()
     this.broadcast('auction:started', { auction: this.state.auction, gameState: this.state })
     this.broadcastState()
+    for (const player of this.state.players) {
+      if (player.isBot && !player.isBankrupt && player.isActive) {
+        this.scheduleBotAuctionBid(player.id, player.money, sq?.price ?? 100)
+      }
+    }
   }
 
   private startAuctionTimer(): void {
     if (this.auctionTimer) clearInterval(this.auctionTimer)
     this.auctionTimer = setInterval(() => {
-      if (!this.state?.auction) {
-        clearInterval(this.auctionTimer!)
-        return
-      }
+      if (!this.state?.auction) { clearInterval(this.auctionTimer!); return }
       this.state.auction.timeRemaining -= 1
       this.broadcast('auction:tick', { timeRemaining: this.state.auction.timeRemaining })
-
       if (this.state.auction.timeRemaining <= 0) {
         clearInterval(this.auctionTimer!)
         this.state = endAuction(this.state)
-        this.broadcast('auction:ended', {
-          winnerId: null,
-          amount: 0,
-          gameState: this.state,
-        })
+        this.broadcast('auction:ended', { winnerId: null, amount: 0, gameState: this.state })
         this.broadcastState()
       }
     }, 1000)
@@ -145,10 +296,8 @@ export class GameRoom {
     const auction = this.state.auction
     if (auction && auction.passedPlayers.length >= activePlayers.length - 1) {
       if (this.auctionTimer) clearInterval(this.auctionTimer)
-      const winnerId = auction.highestBidderId
-      const amount = auction.highestBid
       this.state = endAuction(this.state)
-      this.broadcast('auction:ended', { winnerId, amount, gameState: this.state })
+      this.broadcast('auction:ended', { winnerId: auction.highestBidderId, amount: auction.highestBid, gameState: this.state })
       this.broadcastState()
     }
   }
@@ -266,7 +415,6 @@ export class GameRoom {
         )
         this.state = { ...this.state, currentDiceRoll: roll, gamePhase: 'moving' }
         this.broadcast('game:dice-rolled', { playerId: socketId, roll, gameState: this.state })
-        // movement steps handled by client after dice animation
       } else {
         const newJailTurns = player.jailTurns + 1
         if (newJailTurns > 3) {

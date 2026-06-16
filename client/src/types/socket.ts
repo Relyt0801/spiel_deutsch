@@ -6,7 +6,9 @@ export interface ClientToServerEvents {
   'room:peek': (payload: { roomCode: string }) => void
   'room:leave': () => void
   'room:start-game': () => void
-  'room:kick-player': (payload: { targetId: string }) => void
+  'room:kick-player': (payload: { playerId: string }) => void
+  'room:add-bot': () => void
+  'room:toggle-ready': () => void
 
   'game:roll-dice': () => void
   'game:buy-property': () => void
@@ -44,6 +46,8 @@ export interface ServerToClientEvents {
   'room:player-joined': (payload: { player: Player; gameState: GameState }) => void
   'room:player-left': (payload: { playerId: string; gameState: GameState }) => void
   'room:game-started': (payload: { gameState: GameState }) => void
+  'room:lobby-update': (payload: { lobbyPlayers: Array<{ id: string; name: string; color: string; piece: string; isBot: boolean; isReady: boolean }>; allReady: boolean; hostId: string }) => void
+  'room:kicked': () => void
 
   'game:state-update': (payload: { gameState: GameState }) => void
 

@@ -30,6 +30,7 @@ export interface Player {
   isBankrupt: boolean
   isActive: boolean
   doublesCount: number
+  isBot: boolean
 }
 
 export interface PropertyState {

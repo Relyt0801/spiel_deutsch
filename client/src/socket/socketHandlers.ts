@@ -35,6 +35,16 @@ export function registerSocketHandlers(): void {
     useUiStore.getState().setAppPhase('lobby')
   })
 
+  socket.on('room:lobby-update', ({ lobbyPlayers, allReady }) => {
+    useGameStore.getState().setLobbyPlayers(lobbyPlayers)
+    useGameStore.getState().setLobbyAllReady(allReady)
+  })
+
+  socket.on('room:kicked', () => {
+    useUiStore.getState().setAppPhase('menu')
+    useUiStore.getState().setError('Du wurdest vom Admin aus dem Raum entfernt.')
+  })
+
   socket.on('room:error', ({ message }) => {
     useUiStore.getState().setError(message)
   })

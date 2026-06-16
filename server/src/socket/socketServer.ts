@@ -12,7 +12,7 @@ export function setupSocketHandlers(io: Server): void {
     socket.on('room:create', ({ playerName, color, piece }) => {
       const room = roomManager.createRoom(socket.id, playerName, color, piece)
       socket.join(room.code)
-      socket.emit('room:created', { roomCode: room.code, gameState: room.state, lobbyPlayers: room.lobbyPlayers })
+      socket.emit('room:created', { roomCode: room.code, gameState: room.state, lobbyPlayers: room.getLobbyWithStatus() })
     })
 
     socket.on('room:peek', ({ roomCode }) => {
@@ -45,7 +45,7 @@ export function setupSocketHandlers(io: Server): void {
         return
       }
       socket.join(room.code)
-      socket.emit('room:joined', { gameState: room.state, lobbyPlayers: room.lobbyPlayers })
+      socket.emit('room:joined', { gameState: room.state, lobbyPlayers: room.getLobbyWithStatus() })
       socket.to(room.code).emit('room:player-joined', {
         player: room.lobbyPlayers.find(p => p.id === socket.id),
         gameState: room.state,
@@ -60,11 +60,38 @@ export function setupSocketHandlers(io: Server): void {
       }
     })
 
+    socket.on('room:toggle-ready', () => {
+      const room = roomManager.getRoomBySocket(socket.id)
+      if (!room || room.hostId === socket.id) return // host doesn't need ready
+      room.toggleReady(socket.id)
+    })
+
+    socket.on('room:add-bot', () => {
+      const room = roomManager.getRoomBySocket(socket.id)
+      if (!room || room.hostId !== socket.id) return
+      if (room.lobbyPlayers.length >= 6) {
+        socket.emit('room:error', { message: 'Maximale Spielerzahl erreicht.' })
+        return
+      }
+      room.addBot()
+    })
+
+    socket.on('room:kick-player', ({ playerId }) => {
+      const room = roomManager.getRoomBySocket(socket.id)
+      if (!room || room.hostId !== socket.id) return
+      if (playerId === socket.id) return
+      room.kickPlayer(playerId)
+    })
+
     socket.on('room:start-game', () => {
       const room = roomManager.getRoomBySocket(socket.id)
       if (!room || room.hostId !== socket.id) return
       if (room.lobbyPlayers.length < 1) {
         socket.emit('room:error', { message: 'Mindestens 1 Spieler benötigt.' })
+        return
+      }
+      if (!room.areAllHumansReady()) {
+        socket.emit('room:error', { message: 'Nicht alle Spieler sind bereit.' })
         return
       }
       room.startGame()
