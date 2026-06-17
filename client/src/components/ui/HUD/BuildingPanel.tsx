@@ -37,9 +37,15 @@ export function BuildingPanel({ gameState, myId }: Props) {
       .map(([group]) => group)
   )
 
-  const emit = (ev: 'game:buy-house' | 'game:sell-house' | 'game:buy-hotel' | 'game:sell-hotel'
-    | 'game:mortgage' | 'game:unmortgage' | 'game:sell-all-buildings', idx: number) =>
+  const emit = (ev: 'game:buy-house' | 'game:buy-hotel', idx: number) =>
     getSocket().emit(ev, { propertyIndex: idx })
+
+  const confirmEmit = (
+    ev: 'game:sell-house' | 'game:sell-hotel' | 'game:sell-all-buildings' | 'game:mortgage' | 'game:unmortgage',
+    idx: number, message: string,
+  ) => {
+    if (window.confirm(message)) getSocket().emit(ev, { propertyIndex: idx })
+  }
 
   return (
     <div className={styles.container}>
@@ -78,23 +84,41 @@ export function BuildingPanel({ gameState, myId }: Props) {
                   {canBuyHotel && (
                     <button className={styles.hotelBtn} onClick={() => emit('game:buy-hotel', idx)}>+🏨 {sq.houseCost}€</button>
                   )}
-                  {hasBuildings && (
-                    <>
-                      <button className={styles.sellBtn} onClick={() => emit(prop.hotel ? 'game:sell-hotel' : 'game:sell-house', idx)}>
-                        −{prop.hotel ? '🏨' : '🏠'}
-                      </button>
-                      <button className={styles.sellAllBtn} onClick={() => emit('game:sell-all-buildings', idx)}>
-                        Alle verkaufen
-                      </button>
-                    </>
-                  )}
+                  {hasBuildings && (() => {
+                    const refund = Math.floor((sq.houseCost || 0) / 2)
+                    const name = sq.name.replace('\n', ' ')
+                    return (
+                      <>
+                        <button className={styles.sellBtn} onClick={() => confirmEmit(
+                          prop.hotel ? 'game:sell-hotel' : 'game:sell-house', idx,
+                          prop.hotel
+                            ? `Schulgebäude auf „${name}" für ${refund}€ verkaufen?`
+                            : `Einen Klassenraum auf „${name}" für ${refund}€ verkaufen?`,
+                        )}>
+                          −{prop.hotel ? '🏨' : '🏠'}
+                        </button>
+                        <button className={styles.sellAllBtn} onClick={() => confirmEmit(
+                          'game:sell-all-buildings', idx,
+                          `Wirklich ALLE Gebäude auf „${name}" verkaufen?`,
+                        )}>
+                          Alle verkaufen
+                        </button>
+                      </>
+                    )
+                  })()}
                   {canMortgage && (
-                    <button className={styles.mortBtn} onClick={() => emit('game:mortgage', idx)}>
+                    <button className={styles.mortBtn} onClick={() => confirmEmit(
+                      'game:mortgage', idx,
+                      `Hypothek auf „${sq.name.replace('\n', ' ')}" aufnehmen und ${sq.mortgageValue}€ erhalten?`,
+                    )}>
                       🔒 belasten +{sq.mortgageValue}€
                     </button>
                   )}
                   {canUnmortgage && (
-                    <button className={styles.unmortBtn} onClick={() => emit('game:unmortgage', idx)}>
+                    <button className={styles.unmortBtn} onClick={() => confirmEmit(
+                      'game:unmortgage', idx,
+                      `Hypothek auf „${sq.name.replace('\n', ' ')}" für ${unmortCost}€ einlösen?`,
+                    )}>
                       🔓 einlösen −{unmortCost}€
                     </button>
                   )}

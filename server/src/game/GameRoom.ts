@@ -497,7 +497,15 @@ export class GameRoom {
 
   handleAuctionBid(socketId: string, amount: number): void {
     if (!this.state?.auction) return
+    const before = this.state.auction.highestBid
     this.state = placeBid(this.state, socketId, amount)
+    if (this.state.auction && this.state.auction.highestBid !== before) {
+      // Anti-snipe: a fresh bid in the final seconds bumps the clock back up to 10s.
+      if (this.state.auction.timeRemaining < 10) {
+        this.state.auction.timeRemaining = 10
+        this.broadcast('auction:tick', { timeRemaining: 10 })
+      }
+    }
     this.broadcast('auction:bid-placed', { playerId: socketId, amount, auction: this.state.auction })
   }
 

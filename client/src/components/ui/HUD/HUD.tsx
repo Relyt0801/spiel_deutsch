@@ -146,7 +146,7 @@ export function HUD() {
 
           {canAuctionAll && (
             <button className={styles.btnTrade}
-              onClick={() => getSocket().emit('game:auction-all')}>
+              onClick={() => { if (confirm('Alle freien Straßen nacheinander versteigern?')) getSocket().emit('game:auction-all') }}>
               🔨 Freie Straßen versteigern
             </button>
           )}
