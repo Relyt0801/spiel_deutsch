@@ -32,7 +32,6 @@ export interface ClientToServerEvents {
   'auction:pass': () => void
 
   'trade:propose': (payload: Omit<TradeOffer, 'id' | 'status' | 'confirmedBy'>) => void
-  'trade:accept': (payload: { tradeId: string }) => void
   'trade:reject': (payload: { tradeId: string }) => void
   'trade:counter': (payload: { offeredProperties: number[]; requestedProperties: number[]; offeredMoney: number; requestedMoney: number }) => void
   'trade:confirm': (payload: { tradeId: string }) => void
@@ -96,7 +95,7 @@ export interface ServerToClientEvents {
 
   'trade:proposed': (payload: { trade: TradeOffer }) => void
   'trade:accepted': (payload: { trade: TradeOffer | null; gameState: GameState }) => void
-  'trade:rejected': (payload: { trade: TradeOffer }) => void
+  'trade:rejected': (payload: { trade: TradeOffer; byId?: string }) => void
   'trade:countered': (payload: { trade: TradeOffer }) => void
   'trade:confirm-update': (payload: { trade: TradeOffer }) => void
 

@@ -258,9 +258,6 @@
   .myPropertiesWrapper {
     bottom: 8px;
     left: 4px;
-    max-width: 45vw;
-    max-height: 35vh;
-    overflow-y: auto;
   }
 
   .errorBanner {

@@ -60,6 +60,18 @@
   margin-bottom: 0.5rem;
 }
 
+.ownerDot {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  border: 1px solid rgba(255,255,255,0.5);
+}
+
+.mortNote { color: #f0a0a0; }
+
 .smallText {
   font-size: 0.8rem;
   color: rgba(255,255,255,0.4);
@@ -604,4 +616,38 @@
   font-size: 0.75rem;
   color: rgba(255,220,80,0.8);
   font-weight: 600;
+}
+
+/* ── Mobile responsive ─────────────────────────────────────────────────────── */
+@media (max-width: 700px), (max-height: 700px) {
+  .overlay { padding: 0.5rem; align-items: flex-start; }
+
+  .modal,
+  .modalWide {
+    padding: 1rem;
+    width: min(440px, 96vw);
+    max-height: 92vh;
+    margin-top: max(48px, env(safe-area-inset-top));
+  }
+  .modalWide { width: min(620px, 96vw); }
+
+  .propStrip { margin: -1rem -1rem 0.75rem; }
+
+  .modalTitle { font-size: 1.1rem; }
+
+  .rentTable { font-size: 0.74rem; padding: 0.6rem; }
+  .rentRow { gap: 5px; }
+  .houseSlots { width: 34px; }
+
+  /* Trade columns stack vertically so nothing overflows the screen edge */
+  .tradeColumns,
+  .counterColumns {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  .tradeArrow { transform: rotate(90deg); font-size: 1.2rem; padding: 2px 0; }
+
+  .btnBuy, .btnAuction, .btnEnd { font-size: 0.82rem; padding: 0.6rem 0.5rem; min-height: 42px; }
+
+  .bidInputRow { flex-wrap: wrap; }
 }

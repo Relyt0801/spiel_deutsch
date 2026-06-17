@@ -32,7 +32,8 @@
   position: absolute;
   bottom: calc(100% + 8px);
   left: 0;
-  min-width: 220px;
+  min-width: 256px;
+  max-width: min(86vw, 320px);
   max-height: 320px;
   background: rgba(20, 12, 4, 0.95);
   border: 1px solid rgba(180, 120, 50, 0.4);
@@ -82,7 +83,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.3rem 0.75rem;
+  padding: 0.34rem 0.75rem;
   border-bottom: 1px solid rgba(90, 55, 20, 0.2);
   transition: background 0.15s;
 }
@@ -96,13 +97,13 @@
 }
 
 .row.mortgaged {
-  opacity: 0.5;
+  opacity: 0.55;
 }
 
 .colorDot {
   width: 10px;
   height: 10px;
-  border-radius: 50%;
+  border-radius: 3px;
   flex-shrink: 0;
   border: 1px solid rgba(0, 0, 0, 0.4);
 }
@@ -116,9 +117,89 @@
   text-overflow: ellipsis;
 }
 
-.buildings {
-  font-size: 0.68rem;
-  color: #d4af37;
+/* ── Right-side info: building icons + value ──────────────────────────────── */
+.info {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   flex-shrink: 0;
+}
+
+.value {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #f0c850;
   white-space: nowrap;
+  min-width: 30px;
+  text-align: right;
+}
+
+/* Overlapping building icons */
+.bStack {
+  display: inline-flex;
+  align-items: center;
+  height: 12px;
+}
+
+.house {
+  width: 9px;
+  height: 9px;
+  background: linear-gradient(160deg, #3fae4a, #1f7a2a);
+  border: 1px solid #14521c;
+  border-radius: 2px;
+  margin-left: -3px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.45);
+}
+.house:first-child { margin-left: 0; }
+
+.hotelStack {
+  height: 12px;
+}
+.hotel {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 12px;
+  background: linear-gradient(160deg, #e23b3b, #a40d0d);
+  border: 1px solid #7a0808;
+  border-radius: 2px;
+  font-size: 0.5rem;
+  font-weight: 900;
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Railroad / utility */
+.transport {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  font-size: 0.72rem;
+}
+.transportCount {
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #e8d0a0;
+}
+
+/* Mortgage badge */
+.mortgageBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  font-size: 0.62rem;
+  font-weight: 600;
+  color: #d98c8c;
+  background: rgba(120, 30, 30, 0.35);
+  border: 1px solid rgba(180, 60, 60, 0.4);
+  border-radius: 6px;
+  padding: 1px 6px;
+  white-space: nowrap;
+}
+.mortgageBadge em {
+  font-style: normal;
+  color: #f0b0b0;
+  font-weight: 800;
 }

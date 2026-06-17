@@ -191,11 +191,6 @@ export function setupSocketHandlers(io: Server): void {
       room?.handleProposeTrade(socket.id, offer)
     })
 
-    socket.on('trade:accept', ({ tradeId }) => {
-      const room = roomManager.getRoomBySocket(socket.id)
-      room?.handleAcceptTrade(socket.id, tradeId)
-    })
-
     socket.on('trade:reject', ({ tradeId }) => {
       const room = roomManager.getRoomBySocket(socket.id)
       room?.handleRejectTrade(socket.id, tradeId)

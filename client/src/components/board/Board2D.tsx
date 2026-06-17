@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef, useMemo } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useGameStore } from '../../store/gameStore'
 import { useSocketStore } from '../../store/socketStore'
 import { useUiStore } from '../../store/uiStore'
@@ -75,12 +75,13 @@ function Buildings({ houses, hotel, zone }: { houses: number; hotel: boolean; zo
 }
 
 function Square({
-  index, players, propertyState, freeParkingMoney,
+  index, players, propertyState, freeParkingMoney, onSelect,
 }: {
   index: number
-  players: Array<{ id: string; color: string; piece: string; position: number }>
+  players: Array<{ id: string; name?: string; color: string; piece: string; position: number }>
   propertyState?: { houses: number; hotel: boolean; isMortgaged: boolean; ownerId: string | null }
   freeParkingMoney?: number
+  onSelect?: (index: number) => void
 }) {
   const sq = BOARD_SQUARES[index]
   if (!sq) return null
@@ -91,7 +92,10 @@ function Square({
   const icon = squareIcon(index)
   const isMortgaged = propertyState?.isMortgaged ?? false
   const ownerId = propertyState?.ownerId ?? null
-  const ownerColor = ownerId ? (PLAYER_COLORS[players.find(p => p.id === ownerId)?.color as keyof typeof PLAYER_COLORS] ?? null) : null
+  const owner = ownerId ? players.find(p => p.id === ownerId) : undefined
+  const ownerColor = owner ? (PLAYER_COLORS[owner.color as keyof typeof PLAYER_COLORS] ?? null) : null
+  const ownerPiece = owner ? PIECE_LABELS[owner.piece as keyof typeof PIECE_LABELS] : null
+  const clickable = sq.type === 'property' || sq.type === 'railroad' || sq.type === 'utility'
 
   const zoneClass = {
     corner: styles.zoneCorner,
@@ -103,9 +107,16 @@ function Square({
 
   return (
     <div
-      className={`${styles.square} ${zoneClass} ${isMortgaged ? styles.mortgaged : ''}`}
+      className={`${styles.square} ${zoneClass} ${isMortgaged ? styles.mortgaged : ''} ${clickable ? styles.clickable : ''}`}
       style={{ left: pos.left, top: pos.top, width: pos.width, height: pos.height }}
+      onClick={clickable && onSelect ? () => onSelect(index) : undefined}
     >
+      {/* Owner deed marker — square-shaped tag, distinct from the round player pieces */}
+      {ownerColor && (
+        <div className={styles.ownerTag} style={{ background: ownerColor }} title={owner?.name ? `Gehört ${owner.name}` : 'Im Besitz'}>
+          <span className={styles.ownerTagIcon}>{ownerPiece || '🏷️'}</span>
+        </div>
+      )}
       {/* Color strip */}
       {colorHex && (
         <div
@@ -173,11 +184,9 @@ export function Board2D() {
   const gameState = useGameStore(s => s.gameState)
   const myId = useSocketStore(s => s.myPlayerId)
   const cameraTarget = useUiStore(s => s.cameraTarget)
-  const isAnimating = useUiStore(s => s.isAnimating)
+  const activeModal = useUiStore(s => s.activeModal)
 
   const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight })
-  const prevAnimating = useRef(false)
-  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
     const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight })
@@ -185,21 +194,25 @@ export function Board2D() {
     return () => window.removeEventListener('resize', onResize)
   }, [])
 
-  // Auto zoom-out 1.5s after movement finishes
-  useEffect(() => {
-    if (prevAnimating.current && !isAnimating) {
-      resetTimer.current = setTimeout(() => {
-        useUiStore.getState().setCameraTarget(null)
-      }, 1500)
-    }
-    prevAnimating.current = isAnimating
-    return () => { if (resetTimer.current) clearTimeout(resetTimer.current) }
-  }, [isAnimating])
+  // The camera stays zoomed on the target square for the whole turn; it is reset to
+  // the overview at the start of the next turn (handled in socketHandlers on 'rolling').
+  // Players can peek at the full board any time via the overview toggle below.
 
   const transform = useMemo(
     () => getBoardTransform(cameraTarget, viewport.w, viewport.h),
     [cameraTarget, viewport]
   )
+
+  // Open a read-only info card for any street (price / rent / owner). Blocked while a
+  // modal that needs a decision is open (it covers the board anyway).
+  const handleSelectSquare = (index: number) => {
+    if (activeModal) return
+    useUiStore.getState().openModal('property', { propertyIndex: index, infoOnly: true })
+  }
+
+  const currentTarget = gameState ? gameState.players[gameState.currentPlayerIndex]?.position ?? null : null
+  const toggleOverview = () =>
+    useUiStore.getState().setCameraTarget(cameraTarget === null ? currentTarget : null)
 
   const players = gameState?.players ?? []
   const properties = gameState?.properties ?? []
@@ -228,6 +241,7 @@ export function Board2D() {
                 players={players}
                 propertyState={ps ? { houses: ps.houses, hotel: ps.hotel, isMortgaged: ps.isMortgaged, ownerId: ps.ownerId } : undefined}
                 freeParkingMoney={i === 20 ? freeParkingMoney : undefined}
+                onSelect={handleSelectSquare}
               />
             )
           })}
@@ -284,6 +298,11 @@ export function Board2D() {
           </div>
         </div>
       </div>
+
+      {/* Overview / zoom toggle — always available so anyone can look around */}
+      <button className={styles.overviewBtn} onClick={toggleOverview}>
+        {cameraTarget === null ? '🎯 Zur Figur' : '🔍 Übersicht'}
+      </button>
 
       {/* Dice overlay rendered at fixed screen position */}
       <DiceOverlay />
