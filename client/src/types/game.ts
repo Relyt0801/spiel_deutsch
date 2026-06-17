@@ -88,6 +88,20 @@ export interface GameLog {
   type: 'info' | 'warning' | 'success'
 }
 
+export type BankruptcyMode = 'creditorAll' | 'creditorMoney' | 'release' | 'auction'
+
+export interface GameSettings {
+  goDoubleMoney: boolean
+  bankruptcyMode: BankruptcyMode
+  timeLimit: boolean
+}
+
+export const DEFAULT_SETTINGS: GameSettings = {
+  goDoubleMoney: false,
+  bankruptcyMode: 'auction',
+  timeLimit: false,
+}
+
 export interface GameState {
   roomCode: string
   hostId: string
@@ -99,6 +113,7 @@ export interface GameState {
   currentDiceRoll: DiceRoll | null
   pendingCardAction: GameCard | null
   auction: AuctionState | null
+  auctionQueue: number[]
   activeTrade: TradeOffer | null
   bankHouses: number
   bankHotels: number
@@ -109,6 +124,7 @@ export interface GameState {
   log: GameLog[]
   winnerId: string | null
   freeParkingMoney: number
+  settings: GameSettings
 }
 
 export const STARTING_MONEY = 1500

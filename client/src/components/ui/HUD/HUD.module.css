@@ -38,6 +38,17 @@
   padding-left: 0.6rem;
 }
 
+.timer {
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #7fd0ff;
+  border-left: 1px solid rgba(255,255,255,0.2);
+  padding-left: 0.6rem;
+  font-variant-numeric: tabular-nums;
+}
+.timerLow { color: #ff6b6b; animation: timerPulse 1s ease-in-out infinite; }
+@keyframes timerPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+
 .actions {
   position: absolute;
   bottom: 20px;

@@ -14,95 +14,94 @@ export function BuildingPanel({ gameState, myId }: Props) {
   const phase = gameState.gamePhase
   const currentPlayer = gameState.players[gameState.currentPlayerIndex]
   const isMyTurn = currentPlayer?.id === myId
-  const canManage = isMyTurn && (phase === 'end_turn' || phase === 'rolling')
+  // Usable on your own turn — including while deciding whether to buy a street,
+  // so you can raise cash by selling buildings / taking mortgages.
+  const canManage = isMyTurn && ['end_turn', 'rolling', 'buying'].includes(phase)
 
-  if (!canManage) return null
+  const me = gameState.players.find(p => p.id === myId)
+  if (!canManage || !me) return null
 
-  const myProperties = (gameState.players.find(p => p.id === myId)?.properties || [])
-    .filter(idx => {
-      const sq = BOARD_SQUARES[idx]
-      return sq.type === 'property'
-    })
+  const myProps = me.properties
+    .map(idx => ({ idx, sq: BOARD_SQUARES[idx], prop: gameState.properties[idx] }))
+    .filter(p => p.sq && p.prop)
+    .sort((a, b) => a.idx - b.idx)
 
-  // Which groups are fully owned by me?
-  const ownedGroups = Object.entries(COLOR_GROUPS).filter(([group, indices]) => {
-    if (group === 'railroad' || group === 'utility') return false
-    return indices.every(i => gameState.properties[i]?.ownerId === myId)
-  })
+  if (myProps.length === 0) return null
 
-  if (ownedGroups.length === 0) return null
+  // Which buildable color groups do I fully own?
+  const fullyOwned = new Set(
+    Object.entries(COLOR_GROUPS)
+      .filter(([group, indices]) =>
+        group !== 'railroad' && group !== 'utility' &&
+        indices.every(i => gameState.properties[i]?.ownerId === myId))
+      .map(([group]) => group)
+  )
 
-  const me = gameState.players.find(p => p.id === myId)!
+  const emit = (ev: 'game:buy-house' | 'game:sell-house' | 'game:buy-hotel' | 'game:sell-hotel'
+    | 'game:mortgage' | 'game:unmortgage' | 'game:sell-all-buildings', idx: number) =>
+    getSocket().emit(ev, { propertyIndex: idx })
 
   return (
     <div className={styles.container}>
       <button className={styles.toggle} onClick={() => setOpen(o => !o)}>
-        🏗️ Bauen {open ? '▲' : '▼'}
+        🏗️ Verwalten {open ? '▲' : '▼'}
       </button>
 
       {open && (
         <div className={styles.panel}>
-          {ownedGroups.map(([group, indices]) => (
-            <div key={group} className={styles.group}>
-              <div
-                className={styles.groupHeader}
-                style={{ background: PROPERTY_COLOR_HEX[group] || '#ccc' }}
-              >
-                {group}
-              </div>
-              {indices.map(idx => {
-                const sq = BOARD_SQUARES[idx]
-                const prop = gameState.properties[idx]
-                const canBuyHouse = !prop.hotel && prop.houses < 4 && me.money >= (sq.houseCost || 999)
-                const canBuyHotel = prop.houses === 4 && !prop.hotel && me.money >= (sq.houseCost || 999)
-                const canSell = prop.houses > 0 || prop.hotel
-                const canMortgage = !prop.isMortgaged && prop.houses === 0 && !prop.hotel
-                const canUnmortgage = prop.isMortgaged && me.money >= Math.floor((sq.mortgageValue || 0) * 1.1)
+          <div className={styles.panelHead}>Häuser & Hypotheken</div>
+          {myProps.map(({ idx, sq, prop }) => {
+            const buildable = sq.type === 'property' && fullyOwned.has(sq.group ?? '')
+            const canBuyHouse = buildable && !prop.hotel && prop.houses < 4 && !prop.isMortgaged && me.money >= (sq.houseCost || 999)
+            const canBuyHotel = buildable && prop.houses === 4 && !prop.hotel && me.money >= (sq.houseCost || 999)
+            const hasBuildings = prop.houses > 0 || prop.hotel
+            const canMortgage = !prop.isMortgaged && !hasBuildings
+            const unmortCost = Math.floor((sq.mortgageValue || 0) * 1.1)
+            const canUnmortgage = prop.isMortgaged && me.money >= unmortCost
 
-                return (
-                  <div key={idx} className={styles.property}>
-                    <div className={styles.propName}>{sq.name.replace('\n', ' ')}</div>
-                    <div className={styles.propInfo}>
-                      {prop.hotel ? '🏢 Schulgebäude'
-                        : prop.houses > 0 ? `🏠 ${prop.houses} Klassenraum${prop.houses > 1 ? 'e' : ''}`
-                        : prop.isMortgaged ? '🔒 Verpfändet'
-                        : 'Kein Gebäude'}
-                    </div>
-                    <div className={styles.propBtns}>
-                      {canBuyHouse && (
-                        <button onClick={() => getSocket().emit('game:buy-house', { propertyIndex: idx })}>
-                          +🏠 {sq.houseCost}€
-                        </button>
-                      )}
-                      {canBuyHotel && (
-                        <button className={styles.hotelBtn} onClick={() => getSocket().emit('game:buy-hotel', { propertyIndex: idx })}>
-                          +🏢 {sq.houseCost}€
-                        </button>
-                      )}
-                      {canSell && (
-                        <button className={styles.sellBtn} onClick={() => {
-                          if (prop.hotel) getSocket().emit('game:sell-hotel', { propertyIndex: idx })
-                          else getSocket().emit('game:sell-house', { propertyIndex: idx })
-                        }}>
-                          -{prop.hotel ? '🏢' : '🏠'}
-                        </button>
-                      )}
-                      {canMortgage && (
-                        <button className={styles.mortBtn} onClick={() => getSocket().emit('game:mortgage', { propertyIndex: idx })}>
-                          🔒 {sq.mortgageValue}€
-                        </button>
-                      )}
-                      {canUnmortgage && (
-                        <button className={styles.unmortBtn} onClick={() => getSocket().emit('game:unmortgage', { propertyIndex: idx })}>
-                          🔓 {Math.floor((sq.mortgageValue || 0) * 1.1)}€
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ))}
+            return (
+              <div key={idx} className={styles.property}>
+                <div className={styles.propTop}>
+                  <span className={styles.dot} style={{ background: sq.color ? PROPERTY_COLOR_HEX[sq.color] ?? '#888' : '#888' }} />
+                  <span className={styles.propName}>{sq.name.replace('\n', ' ')}</span>
+                  <span className={styles.propState}>
+                    {prop.isMortgaged ? '📋 Hypothek'
+                      : prop.hotel ? '🏨 Hotel'
+                      : prop.houses > 0 ? `🏠 ×${prop.houses}`
+                      : '—'}
+                  </span>
+                </div>
+                <div className={styles.propBtns}>
+                  {canBuyHouse && (
+                    <button onClick={() => emit('game:buy-house', idx)}>+🏠 {sq.houseCost}€</button>
+                  )}
+                  {canBuyHotel && (
+                    <button className={styles.hotelBtn} onClick={() => emit('game:buy-hotel', idx)}>+🏨 {sq.houseCost}€</button>
+                  )}
+                  {hasBuildings && (
+                    <>
+                      <button className={styles.sellBtn} onClick={() => emit(prop.hotel ? 'game:sell-hotel' : 'game:sell-house', idx)}>
+                        −{prop.hotel ? '🏨' : '🏠'}
+                      </button>
+                      <button className={styles.sellAllBtn} onClick={() => emit('game:sell-all-buildings', idx)}>
+                        Alle verkaufen
+                      </button>
+                    </>
+                  )}
+                  {canMortgage && (
+                    <button className={styles.mortBtn} onClick={() => emit('game:mortgage', idx)}>
+                      🔒 belasten +{sq.mortgageValue}€
+                    </button>
+                  )}
+                  {canUnmortgage && (
+                    <button className={styles.unmortBtn} onClick={() => emit('game:unmortgage', idx)}>
+                      🔓 einlösen −{unmortCost}€
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

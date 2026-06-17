@@ -2,11 +2,12 @@ import type { Server } from 'socket.io'
 import {
   GameState, Player, initGameState, rollDice, movePlayer, applyLanding,
   buyProperty, startAuction, placeBid, passAuction, endAuction,
-  buyHouse, buyHotel, sellHouse, sellHotel, mortgage, unmortgage, proposeTrade,
+  buyHouse, buyHotel, sellHouse, sellHotel, sellAllBuildings, mortgage, unmortgage, proposeTrade,
   counterTrade, confirmTrade,
   declareBankruptcy, handleEndTurn, advanceTurn, applyCardEffect, sendToJail,
+  DEFAULT_SETTINGS,
 } from './GameEngine'
-import type { TradeOffer, DiceRoll } from './GameEngine'
+import type { TradeOffer, DiceRoll, GameSettings, GamePhase } from './GameEngine'
 import { BOARD_SQUARES, COLOR_GROUPS, DOUBLE_IN_ROW_JAIL } from '../config/boardData'
 import { logger } from '../utils/logger'
 
@@ -24,9 +25,14 @@ export class GameRoom {
   state: GameState | null = null
   lobbyPlayers: LobbyPlayer[] = []
   readyPlayers: Set<string> = new Set()
+  settings: GameSettings = { ...DEFAULT_SETTINGS }
   auctionTimer: NodeJS.Timeout | null = null
   private io: Server
   private pendingBotTimers: Set<ReturnType<typeof setTimeout>> = new Set()
+  private savedPhaseBeforeQueue: GamePhase | null = null
+  private turnTimer: NodeJS.Timeout | null = null
+  private turnTimerPlayerId: string | null = null
+  private tradeTimer: NodeJS.Timeout | null = null
 
   constructor(code: string, hostId: string, io: Server) {
     this.code = code
@@ -99,9 +105,15 @@ export class GameRoom {
     this.broadcastLobbyUpdate()
   }
 
+  updateSettings(socketId: string, settings: Partial<GameSettings>): void {
+    if (socketId !== this.hostId) return
+    this.settings = { ...this.settings, ...settings }
+    this.broadcast('room:settings-update', { settings: this.settings })
+  }
+
   startGame(): void {
-    this.state = initGameState(this.lobbyPlayers, this.code, this.hostId)
-    this.broadcastState()
+    this.state = initGameState(this.lobbyPlayers, this.code, this.hostId, this.settings)
+    this.broadcastState() // manageTurnTimer() inside starts the clock when time-limit is on
   }
 
   // ─── Broadcasts ──────────────────────────────────────────────────────────
@@ -111,6 +123,7 @@ export class GameRoom {
       lobbyPlayers: this.getLobbyWithStatus(),
       hostId: this.hostId,
       allReady: this.areAllHumansReady(),
+      settings: this.settings,
     })
   }
 
@@ -120,6 +133,7 @@ export class GameRoom {
 
   broadcastState(): void {
     this.broadcast('game:state-update', { gameState: this.state })
+    this.manageTurnTimer()
     this.scheduleBotAction()
   }
 
@@ -360,7 +374,11 @@ export class GameRoom {
     const { newState, event, data } = applyLanding(this.state, socketId)
     this.state = newState
     this.broadcast(event, { playerId: socketId, ...data, gameState: this.state })
+    if (this.state.gamePhase === 'game_over') {
+      this.broadcast('game:over', { winnerId: this.state.winnerId, gameState: this.state })
+    }
     this.broadcastState()
+    this.processAuctionQueue()
   }
 
   handleBuyProperty(socketId: string): void {
@@ -388,6 +406,79 @@ export class GameRoom {
     }
   }
 
+  // ─── Time-limit timers (optional modifier) ───────────────────────────────
+  private manageTurnTimer(): void {
+    if (!this.state || !this.settings.timeLimit) { this.clearTurnTimer(); return }
+    const cp = this.state.players[this.state.currentPlayerIndex]
+    const interactive = ['rolling', 'end_turn', 'buying', 'jail_decision', 'card_drawn'].includes(this.state.gamePhase)
+    const eligible = cp && !cp.isBot && !cp.isBankrupt && interactive && !this.state.auction && !this.state.activeTrade
+    if (eligible) {
+      // (Re)start the clock when a new player's turn begins.
+      if (!this.turnTimer || this.turnTimerPlayerId !== cp.id) this.startTurnTimer(cp.id)
+    } else {
+      this.clearTurnTimer()
+    }
+  }
+
+  private startTurnTimer(playerId: string): void {
+    this.clearTurnTimer()
+    if (!this.state || !this.settings.timeLimit) return
+    this.turnTimerPlayerId = playerId
+    let remaining = 120
+    this.broadcast('game:turn-tick', { timeRemaining: remaining })
+    this.turnTimer = setInterval(() => {
+      remaining -= 1
+      this.broadcast('game:turn-tick', { timeRemaining: remaining })
+      if (remaining <= 0) {
+        this.clearTurnTimer()
+        this.autoResolveTurn()
+      }
+    }, 1000)
+  }
+
+  private clearTurnTimer(): void {
+    if (this.turnTimer) { clearInterval(this.turnTimer); this.turnTimer = null }
+    this.turnTimerPlayerId = null
+  }
+
+  private autoResolveTurn(): void {
+    if (!this.state) return
+    const cp = this.state.players[this.state.currentPlayerIndex]
+    if (!cp || cp.isBot || cp.isBankrupt) return
+    switch (this.state.gamePhase) {
+      case 'rolling': this.handleRollDice(cp.id); break
+      case 'jail_decision': this.handleJailAction(cp.id, cp.money >= 50 ? 'pay' : 'roll'); break
+      case 'buying': this.handleDeclineProperty(cp.id); break
+      case 'card_drawn': this.handleCardAcknowledge(cp.id); break
+      case 'end_turn': this.handleEndTurn(cp.id); break
+    }
+  }
+
+  private startTradeTimer(): void {
+    this.clearTradeTimer()
+    if (!this.state || !this.settings.timeLimit || !this.state.activeTrade) return
+    const tradeId = this.state.activeTrade.id
+    let remaining = 60
+    this.broadcast('trade:tick', { timeRemaining: remaining })
+    this.tradeTimer = setInterval(() => {
+      remaining -= 1
+      this.broadcast('trade:tick', { timeRemaining: remaining })
+      if (remaining <= 0) {
+        this.clearTradeTimer()
+        if (this.state?.activeTrade?.id === tradeId) {
+          const trade = this.state.activeTrade
+          this.state = { ...this.state, activeTrade: null, gamePhase: 'end_turn' }
+          this.broadcast('trade:rejected', { trade, byId: null })
+          this.broadcastState()
+        }
+      }
+    }, 1000)
+  }
+
+  private clearTradeTimer(): void {
+    if (this.tradeTimer) { clearInterval(this.tradeTimer); this.tradeTimer = null }
+  }
+
   private startAuctionTimer(): void {
     if (this.auctionTimer) clearInterval(this.auctionTimer)
     this.auctionTimer = setInterval(() => {
@@ -399,6 +490,7 @@ export class GameRoom {
         this.state = endAuction(this.state)
         this.broadcast('auction:ended', { winnerId: null, amount: 0, gameState: this.state })
         this.broadcastState()
+        this.processAuctionQueue()
       }
     }, 1000)
   }
@@ -419,6 +511,7 @@ export class GameRoom {
       this.state = endAuction(this.state)
       this.broadcast('auction:ended', { winnerId: auction.highestBidderId, amount: auction.highestBid, gameState: this.state })
       this.broadcastState()
+      this.processAuctionQueue()
     }
   }
 
@@ -476,6 +569,12 @@ export class GameRoom {
     this.broadcastState()
   }
 
+  handleSellAllBuildings(socketId: string, propertyIndex: number): void {
+    if (!this.state) return
+    this.state = sellAllBuildings(this.state, socketId, propertyIndex)
+    this.broadcastState()
+  }
+
   handleMortgage(socketId: string, propertyIndex: number): void {
     if (!this.state) return
     this.state = mortgage(this.state, socketId, propertyIndex)
@@ -493,6 +592,7 @@ export class GameRoom {
     this.state = proposeTrade(this.state, offer)
     this.broadcast('trade:proposed', { trade: this.state.activeTrade })
     this.broadcastState()
+    this.startTradeTimer()
     const receiver = this.state.players.find(p => p.id === offer.toPlayerId)
     if (receiver?.isBot && this.state.activeTrade) {
       this.scheduleBotTradeResponse(receiver.id, this.state.activeTrade.id)
@@ -506,6 +606,7 @@ export class GameRoom {
     this.state = counterTrade(this.state, socketId, terms)
     this.broadcast('trade:countered', { trade: this.state.activeTrade })
     this.broadcastState()
+    this.startTradeTimer()
     const newReceiver = this.state.players.find(p => p.id === this.state!.activeTrade!.toPlayerId)
     if (newReceiver?.isBot) {
       this.scheduleBotTradeResponse(newReceiver.id, this.state.activeTrade!.id)
@@ -519,6 +620,7 @@ export class GameRoom {
     if (active.fromPlayerId !== socketId && active.toPlayerId !== socketId) return
     this.state = confirmTrade(this.state, socketId)
     if (!this.state.activeTrade) {
+      this.clearTradeTimer()
       this.broadcast('trade:accepted', { trade: null, gameState: this.state })
       this.broadcastState()
     } else {
@@ -539,6 +641,7 @@ export class GameRoom {
     const trade = this.state.activeTrade
     // Only the two trade partners may cancel.
     if (trade.fromPlayerId !== socketId && trade.toPlayerId !== socketId) return
+    this.clearTradeTimer()
     this.state = { ...this.state, activeTrade: null, gamePhase: 'end_turn' }
     this.broadcast('trade:rejected', { trade, byId: socketId })
     this.broadcastState()
@@ -548,12 +651,51 @@ export class GameRoom {
     if (!this.state) return
     const currentPlayer = this.state.players[this.state.currentPlayerIndex]
     const creditorId = this.state.properties[currentPlayer.position]?.ownerId || null
-    this.state = declareBankruptcy(this.state, socketId, creditorId)
+    this.state = declareBankruptcy(this.state, socketId, creditorId, this.settings.bankruptcyMode)
     this.broadcast('game:player-bankrupt', { playerId: socketId, gameState: this.state })
     if (this.state.gamePhase === 'game_over') {
       this.broadcast('game:over', { winnerId: this.state.winnerId, gameState: this.state })
     }
     this.broadcastState()
+    this.processAuctionQueue()
+  }
+
+  /** Auction all unowned streets one after another (admin "speed up" button). */
+  handleAuctionAll(socketId: string): void {
+    if (!this.state || socketId !== this.hostId) return
+    if (this.state.auction || this.state.activeTrade) return
+    if (this.state.gamePhase !== 'rolling' && this.state.gamePhase !== 'end_turn') return
+    const free = this.state.properties
+      .filter(p => p.ownerId === null && ['property', 'railroad', 'utility'].includes(BOARD_SQUARES[p.boardIndex]?.type))
+      .map(p => p.boardIndex)
+    if (free.length === 0) return
+    this.state = { ...this.state, auctionQueue: [...this.state.auctionQueue, ...free] }
+    this.processAuctionQueue()
+  }
+
+  /** Starts the next queued auction, or restores the pre-queue phase when finished. */
+  private processAuctionQueue(): void {
+    if (!this.state || this.state.auction) return
+    if (this.state.auctionQueue.length === 0) {
+      if (this.savedPhaseBeforeQueue) {
+        this.state = { ...this.state, gamePhase: this.savedPhaseBeforeQueue }
+        this.savedPhaseBeforeQueue = null
+        this.broadcastState()
+      }
+      return
+    }
+    if (this.savedPhaseBeforeQueue === null) this.savedPhaseBeforeQueue = this.state.gamePhase
+    const [next, ...rest] = this.state.auctionQueue
+    this.state = startAuction({ ...this.state, auctionQueue: rest }, next)
+    this.startAuctionTimer()
+    this.broadcast('auction:started', { auction: this.state.auction, gameState: this.state })
+    this.broadcastState()
+    const sq = BOARD_SQUARES[next]
+    for (const player of this.state.players) {
+      if (player.isBot && !player.isBankrupt && player.isActive) {
+        this.scheduleBotAuctionBid(player.id, player.money, sq?.price ?? 100)
+      }
+    }
   }
 
   handleJailAction(socketId: string, action: 'pay' | 'card' | 'roll'): void {

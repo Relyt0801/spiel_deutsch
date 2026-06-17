@@ -4,6 +4,7 @@ import { useSocketStore } from '../../../store/socketStore'
 import { useUiStore } from '../../../store/uiStore'
 import { getSocket } from '../../../socket/socketClient'
 import { PLAYER_COLORS } from '../../../types/game'
+import { BOARD_SQUARES } from '../../../config/boardData'
 import { BuildingPanel } from './BuildingPanel'
 import { MyPropertiesPanel } from './MyPropertiesPanel'
 import styles from './HUD.module.css'
@@ -11,10 +12,14 @@ import styles from './HUD.module.css'
 export function HUD() {
   const gameState = useGameStore(s => s.gameState)
   const myId = useSocketStore(s => s.myPlayerId)
+  const isHost = useSocketStore(s => s.isHost)
   const isAnimating = useUiStore(s => s.isAnimating)
   const diceAnimating = useUiStore(s => s.diceAnimating)
   const errorMessage = useUiStore(s => s.errorMessage)
   const setError = useUiStore(s => s.setError)
+  const activeModal = useUiStore(s => s.activeModal)
+  const turnTime = useUiStore(s => s.turnTimeRemaining)
+  const tradeTime = useUiStore(s => s.tradeTimeRemaining)
 
   const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight })
   useEffect(() => {
@@ -41,6 +46,30 @@ export function HUD() {
   const myPlayer = gameState.players.find(p => p.id === myId)
   const canDeclareBankruptcy = isMyTurn && phase === 'end_turn' && myPlayer && !myPlayer.isBankrupt
 
+  // Re-open the buy decision after the player closed it to raise money.
+  const buyPending = isMyTurn && phase === 'buying' && !activeModal
+  const reopenBuy = () => {
+    useUiStore.getState().openModal('property', {
+      propertyIndex: currentPlayer.position, canBuy: true, ownerId: null, rentDue: null,
+    })
+  }
+
+  // Admin: auction all free streets to speed up the round.
+  const hasFreeStreets = gameState.properties.some(p => {
+    if (p.ownerId !== null) return false
+    const t = BOARD_SQUARES[p.boardIndex]?.type
+    return t === 'property' || t === 'railroad' || t === 'utility'
+  })
+  const canAuctionAll = isHost && (phase === 'rolling' || phase === 'end_turn') &&
+    !gameState.auction && !gameState.activeTrade && hasFreeStreets
+
+  const timeLimitOn = gameState.settings?.timeLimit
+  const showTurnTimer = timeLimitOn && isMyTurn && turnTime != null &&
+    ['rolling', 'end_turn', 'buying', 'jail_decision', 'card_drawn'].includes(phase) &&
+    !gameState.activeTrade
+  const showTradeTimer = timeLimitOn && !!gameState.activeTrade && tradeTime != null
+  const fmt = (s: number) => `${Math.max(0, Math.floor(s / 60))}:${String(Math.max(0, s % 60)).padStart(2, '0')}`
+
   return (
     <div className={styles.hud}>
       {errorMessage && (
@@ -61,6 +90,11 @@ export function HUD() {
           <span className={styles.diceResult}>
             🎲 {gameState.currentDiceRoll.die1} + {gameState.currentDiceRoll.die2} = {gameState.currentDiceRoll.total}
             {gameState.currentDiceRoll.isDouble && ' (Pasch! 🎉)'}
+          </span>
+        )}
+        {(showTurnTimer || showTradeTimer) && (
+          <span className={`${styles.timer} ${((showTradeTimer ? tradeTime! : turnTime!) <= 15) ? styles.timerLow : ''}`}>
+            ⏱ {fmt(showTradeTimer ? tradeTime! : turnTime!)}
           </span>
         )}
       </div>
@@ -103,6 +137,20 @@ export function HUD() {
           )}
 
           <BuildingPanel gameState={gameState} myId={myId} />
+
+          {buyPending && (
+            <button className={styles.btnRoll} onClick={reopenBuy}>
+              🏠 Kaufentscheidung
+            </button>
+          )}
+
+          {canAuctionAll && (
+            <button className={styles.btnTrade}
+              onClick={() => getSocket().emit('game:auction-all')}>
+              🔨 Freie Straßen versteigern
+            </button>
+          )}
+
           {(phase === 'end_turn') && !gameState.activeTrade && (
             <button className={styles.btnTrade}
               onClick={() => useUiStore.getState().openModal('trade', null)}>

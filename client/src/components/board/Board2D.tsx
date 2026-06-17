@@ -126,9 +126,6 @@ function Square({
           {propertyState && (propertyState.houses > 0 || propertyState.hotel) && (
             <Buildings houses={propertyState.houses} hotel={propertyState.hotel} zone={pos.zone} />
           )}
-          {ownerColor && !(propertyState?.houses || propertyState?.hotel) && (
-            <div className={styles.ownerBar} style={{ background: ownerColor }} />
-          )}
         </div>
       )}
 

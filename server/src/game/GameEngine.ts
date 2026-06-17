@@ -71,6 +71,20 @@ export type GamePhase =
   | 'auctioning' | 'paying_rent' | 'card_drawn' | 'jail_decision'
   | 'trading' | 'building' | 'end_turn' | 'game_over'
 
+export type BankruptcyMode = 'creditorAll' | 'creditorMoney' | 'release' | 'auction'
+
+export interface GameSettings {
+  goDoubleMoney: boolean
+  bankruptcyMode: BankruptcyMode
+  timeLimit: boolean
+}
+
+export const DEFAULT_SETTINGS: GameSettings = {
+  goDoubleMoney: false,
+  bankruptcyMode: 'auction',
+  timeLimit: false,
+}
+
 export interface GameState {
   roomCode: string
   hostId: string
@@ -82,6 +96,7 @@ export interface GameState {
   currentDiceRoll: DiceRoll | null
   pendingCardAction: Record<string, unknown> | null
   auction: AuctionState | null
+  auctionQueue: number[]
   activeTrade: TradeOffer | null
   bankHouses: number
   bankHotels: number
@@ -92,6 +107,7 @@ export interface GameState {
   log: GameLog[]
   winnerId: string | null
   freeParkingMoney: number
+  settings: GameSettings
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -114,6 +130,7 @@ export function initGameState(
   players: Array<{ id: string; name: string; color: string; piece: string; isBot?: boolean }>,
   roomCode: string,
   hostId: string,
+  settings: GameSettings = DEFAULT_SETTINGS,
 ): GameState {
   const gamePlayers: Player[] = players.map(p => ({
     id: p.id,
@@ -150,6 +167,7 @@ export function initGameState(
     currentDiceRoll: null,
     pendingCardAction: null,
     auction: null,
+    auctionQueue: [],
     activeTrade: null,
     bankHouses: BANK_HOUSES,
     bankHotels: BANK_HOTELS,
@@ -160,7 +178,25 @@ export function initGameState(
     log: [{ timestamp: Date.now(), message: 'Spiel gestartet! Viel Spaß beim Remigianum Monopoly!', type: 'success' }],
     winnerId: null,
     freeParkingMoney: 0,
+    settings,
   }
+}
+
+/** Total liquidatable value: cash + building refunds + mortgage value of un-mortgaged streets. */
+export function netWorth(state: GameState, playerId: string): number {
+  const p = state.players.find(x => x.id === playerId)
+  if (!p) return 0
+  let total = p.money
+  for (const idx of p.properties) {
+    const sq = BOARD_SQUARES[idx]
+    const prop = state.properties[idx]
+    if (!prop) continue
+    const halfHouse = Math.floor((sq.houseCost || 0) / 2)
+    if (prop.hotel) total += halfHouse
+    total += prop.houses * halfHouse
+    if (!prop.isMortgaged) total += (sq.mortgageValue || 0)
+  }
+  return total
 }
 
 export function rollDice(): DiceRoll {
@@ -205,12 +241,13 @@ export function applyLanding(state: GameState, playerId: string): {
   const square = BOARD_SQUARES[player.position]
 
   if (square.type === 'go') {
-    s = addLog(s, `${player.name} landet auf "Unterricht beginnt!" und erhält ${PASS_GO_AMOUNT}€!`, 'success')
+    const goBonus = PASS_GO_AMOUNT * (s.settings.goDoubleMoney ? 2 : 1)
+    s = addLog(s, `${player.name} landet auf "Unterricht beginnt!" und erhält ${goBonus}€!`, 'success')
     s.players = s.players.map(p =>
-      p.id === playerId ? { ...p, money: p.money + PASS_GO_AMOUNT } : p
+      p.id === playerId ? { ...p, money: p.money + goBonus } : p
     )
     s.gamePhase = 'end_turn'
-    return { newState: s, event: 'game:landed-go', data: { collected: PASS_GO_AMOUNT } }
+    return { newState: s, event: 'game:landed-go', data: { collected: goBonus } }
   }
 
   if (square.type === 'go_to_jail') {
@@ -240,13 +277,19 @@ export function applyLanding(state: GameState, playerId: string): {
 
   if (square.type === 'tax') {
     const amount = square.price || 0
+    // Can't cover it even by liquidating everything → bankrupt to the bank.
+    if (player.money < amount && netWorth(s, playerId) < amount) {
+      s = declareBankruptcy(s, playerId, null, s.settings.bankruptcyMode)
+      return { newState: s, event: 'game:player-bankrupt', data: { playerId } }
+    }
+    const paid = Math.min(amount, player.money)
     s.players = s.players.map(p =>
-      p.id === playerId ? { ...p, money: p.money - amount } : p
+      p.id === playerId ? { ...p, money: p.money - paid } : p
     )
-    s.freeParkingMoney += amount
-    s = addLog(s, `${player.name} zahlt ${amount}€ Steuer (${square.name}).`, 'warning')
+    s.freeParkingMoney += paid
+    s = addLog(s, `${player.name} zahlt ${paid}€ Steuer (${square.name}).`, 'warning')
     s.gamePhase = 'end_turn'
-    return { newState: s, event: 'game:landed-tax', data: { amount } }
+    return { newState: s, event: 'game:landed-tax', data: { amount: paid } }
   }
 
   if (square.type === 'chance') {
@@ -275,6 +318,12 @@ export function applyLanding(state: GameState, playerId: string): {
     }
     // Calculate rent
     const rent = calculateRent(s, player.position, s.currentDiceRoll?.total || 2)
+    // Can't pay even after liquidating everything → bankrupt to the property owner.
+    if (player.money < rent && netWorth(s, playerId) < rent) {
+      const ownerId = propState.ownerId
+      s = declareBankruptcy(s, playerId, ownerId, s.settings.bankruptcyMode)
+      return { newState: s, event: 'game:player-bankrupt', data: { playerId, creditorId: ownerId } }
+    }
     s = payRent(s, playerId, propState.ownerId, rent)
     s.gamePhase = 'end_turn'
     return { newState: s, event: 'game:landed-property', data: { propertyIndex: player.position, ownerId: propState.ownerId, rentDue: rent, canBuy: false } }
@@ -764,31 +813,60 @@ export function acceptTrade(state: GameState, tradeId: string): GameState {
   return s
 }
 
-export function declareBankruptcy(state: GameState, playerId: string, creditorId: string | null): GameState {
+export function sellAllBuildings(state: GameState, playerId: string, propertyIndex: number): GameState {
+  let s = { ...state }
+  const prop = s.properties[propertyIndex]
+  if (!prop || prop.ownerId !== playerId) return s
+  if (prop.hotel) s = sellHotel(s, playerId, propertyIndex)
+  while (s.properties[propertyIndex].houses > 0) {
+    s = sellHouse(s, playerId, propertyIndex)
+  }
+  return s
+}
+
+export function declareBankruptcy(
+  state: GameState,
+  playerId: string,
+  creditorId: string | null,
+  mode: BankruptcyMode = 'auction',
+): GameState {
   let s = { ...state }
   const player = s.players.find(p => p.id === playerId)!
+  const props = [...player.properties]
+  const creditorName = creditorId ? (s.players.find(p => p.id === creditorId)?.name ?? 'Mitspieler') : null
 
-  if (creditorId) {
-    const creditor = s.players.find(p => p.id === creditorId)!
-    s.players = s.players.map(p => {
-      if (p.id === creditorId) {
-        return {
-          ...p,
-          money: p.money + player.money,
-          properties: [...p.properties, ...player.properties],
-        }
-      }
-      return p
-    })
+  const releaseToBank = () => {
     s.properties = s.properties.map(p =>
-      player.properties.includes(p.boardIndex) ? { ...p, ownerId: creditorId } : p
+      props.includes(p.boardIndex) ? { ...p, ownerId: null, houses: 0, hotel: false, isMortgaged: false } : p
     )
-    s = addLog(s, `${player.name} ist bankrott! Vermögen geht an ${creditor.name}.`, 'warning')
+  }
+  const giveMoneyToCreditor = () => {
+    if (!creditorId) return
+    s.players = s.players.map(p => p.id === creditorId ? { ...p, money: p.money + player.money } : p)
+  }
+
+  if (mode === 'creditorAll' && creditorId) {
+    // Everything (cash + streets with buildings) goes to the creditor.
+    s.players = s.players.map(p => p.id === creditorId
+      ? { ...p, money: p.money + player.money, properties: [...p.properties, ...props] }
+      : p)
+    s.properties = s.properties.map(p => props.includes(p.boardIndex) ? { ...p, ownerId: creditorId } : p)
+    s = addLog(s, `${player.name} ist bankrott! Gesamter Besitz geht an ${creditorName}.`, 'warning')
+  } else if (mode === 'creditorMoney') {
+    giveMoneyToCreditor()
+    releaseToBank()
+    s = addLog(s, `${player.name} ist bankrott! Geld geht an ${creditorName ?? 'die Bank'}, Grundstücke werden frei.`, 'warning')
+  } else if (mode === 'auction') {
+    giveMoneyToCreditor()
+    releaseToBank()
+    s.auctionQueue = [...s.auctionQueue, ...props.filter(i => {
+      const t = BOARD_SQUARES[i]?.type
+      return t === 'property' || t === 'railroad' || t === 'utility'
+    })]
+    s = addLog(s, `${player.name} ist bankrott! Die Grundstücke werden versteigert.`, 'warning')
   } else {
-    // Bank
-    s.properties = s.properties.map(p =>
-      player.properties.includes(p.boardIndex) ? { ...p, ownerId: null, houses: 0, hotel: false, isMortgaged: false } : p
-    )
+    // 'release' (or creditorAll without a creditor) → everything back to the bank.
+    releaseToBank()
     s = addLog(s, `${player.name} ist bankrott! Vermögen geht an die Bank.`, 'warning')
   }
 

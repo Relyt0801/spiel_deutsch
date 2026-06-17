@@ -1,4 +1,4 @@
-import type { GameState, Player, DiceRoll, AuctionState, TradeOffer, GameCard, PlayerColor, PieceType } from './game'
+import type { GameState, Player, DiceRoll, AuctionState, TradeOffer, GameCard, PlayerColor, PieceType, GameSettings } from './game'
 
 export interface ClientToServerEvents {
   'room:create': (payload: { playerName: string; color: PlayerColor; piece: PieceType }) => void
@@ -27,6 +27,9 @@ export interface ClientToServerEvents {
   'game:sell-hotel': (payload: { propertyIndex: number }) => void
   'game:mortgage': (payload: { propertyIndex: number }) => void
   'game:unmortgage': (payload: { propertyIndex: number }) => void
+  'game:sell-all-buildings': (payload: { propertyIndex: number }) => void
+  'game:auction-all': () => void
+  'room:update-settings': (payload: { settings: Partial<GameSettings> }) => void
 
   'auction:bid': (payload: { amount: number }) => void
   'auction:pass': () => void
@@ -47,8 +50,12 @@ export interface ServerToClientEvents {
   'room:player-joined': (payload: { player: Player; gameState: GameState }) => void
   'room:player-left': (payload: { playerId: string; gameState: GameState }) => void
   'room:game-started': (payload: { gameState: GameState }) => void
-  'room:lobby-update': (payload: { lobbyPlayers: Array<{ id: string; name: string; color: string; piece: string; isBot: boolean; isReady: boolean }>; allReady: boolean; hostId: string }) => void
+  'room:lobby-update': (payload: { lobbyPlayers: Array<{ id: string; name: string; color: string; piece: string; isBot: boolean; isReady: boolean }>; allReady: boolean; hostId: string; settings?: GameSettings }) => void
+  'room:settings-update': (payload: { settings: GameSettings }) => void
   'room:kicked': () => void
+
+  'game:turn-tick': (payload: { timeRemaining: number }) => void
+  'trade:tick': (payload: { timeRemaining: number }) => void
 
   'game:state-update': (payload: { gameState: GameState }) => void
 
@@ -95,7 +102,7 @@ export interface ServerToClientEvents {
 
   'trade:proposed': (payload: { trade: TradeOffer }) => void
   'trade:accepted': (payload: { trade: TradeOffer | null; gameState: GameState }) => void
-  'trade:rejected': (payload: { trade: TradeOffer; byId?: string }) => void
+  'trade:rejected': (payload: { trade: TradeOffer; byId?: string | null }) => void
   'trade:countered': (payload: { trade: TradeOffer }) => void
   'trade:confirm-update': (payload: { trade: TradeOffer }) => void
 

@@ -167,21 +167,41 @@ function PropertyModal({ data, myId, gameState, closeModal }: PropertyModalProps
     )
   }
 
+  const isBuyDecision = isMyTurn && gameState.gamePhase === 'buying'
+  const me = gameState.players.find(p => p.id === myId)
+  const price = square.price ?? 0
+  const canAfford = (me?.money ?? 0) >= price
+
   return (
     <div>
       {colorHex && <div className={styles.propStrip} style={{ background: colorHex }} />}
-      <h2 className={styles.modalTitle}>{square.name.replace('\n', ' ')}</h2>
+      <div className={styles.propHeadRow}>
+        <h2 className={styles.modalTitle}>{square.name.replace('\n', ' ')}</h2>
+        {isBuyDecision && (
+          <button className={styles.closeIconBtn} title="Schließen – Geld beschaffen" onClick={closeModal}>✕</button>
+        )}
+      </div>
 
-      {canBuy && isMyTurn && (
+      {isBuyDecision && (
         <>
-          <p className={styles.propPrice}>💰 Kaufpreis: <strong>{square.price}€</strong></p>
+          <p className={styles.propPrice}>
+            💰 Kaufpreis: <strong>{price}€</strong>
+            <span className={styles.cashHint}> · Dein Geld: {(me?.money ?? 0).toLocaleString('de-DE')}€</span>
+          </p>
           <RentTable square={square} />
+          {!canAfford && (
+            <p className={styles.warnHint}>
+              Nicht genug Geld. Schließe dieses Fenster (✕), um über „🏗️ Verwalten“ Häuser zu
+              verkaufen oder Hypotheken aufzunehmen – danach kannst du noch kaufen. Oder gib die Straße zur Auktion frei.
+            </p>
+          )}
           <div className={styles.btnRow}>
-            <button className={styles.btnBuy} onClick={() => { getSocket().emit('game:buy-property'); closeModal() }}>
-              ✅ Kaufen ({square.price}€)
+            <button className={styles.btnBuy} disabled={!canAfford}
+              onClick={() => { getSocket().emit('game:buy-property'); closeModal() }}>
+              ✅ Kaufen ({price}€)
             </button>
             <button className={styles.btnAuction} onClick={() => { getSocket().emit('game:decline-property'); closeModal() }}>
-              🔨 Auktion
+              🔨 Auktion / Ablehnen
             </button>
           </div>
         </>
@@ -446,6 +466,7 @@ const sortedEq = (a: number[], b: number[]) => {
 
 function TradeModal({ myId, gameState, closeModal }: TradeModalProps) {
   const trade = gameState.activeTrade as TradeOffer | null
+  const tradeTime = useUiStore(s => s.tradeTimeRemaining)
   const me = gameState.players.find(p => p.id === myId)
   const currentPlayer = gameState.players[gameState.currentPlayerIndex]
   const isMyTurn = currentPlayer?.id === myId
@@ -601,6 +622,11 @@ function TradeModal({ myId, gameState, closeModal }: TradeModalProps) {
           {' ⇄ '}
           <strong style={{ color: toColor }}>{toPlayer?.name}</strong>
         </span>
+        {gameState.settings?.timeLimit && tradeTime != null && (
+          <span className={`${styles.tradeTimer} ${tradeTime <= 15 ? styles.tradeTimerLow : ''}`}>
+            ⏱ {Math.floor(tradeTime / 60)}:{String(Math.max(0, tradeTime % 60)).padStart(2, '0')}
+          </span>
+        )}
       </div>
 
       {/* Confirmation status — visible to everyone */}

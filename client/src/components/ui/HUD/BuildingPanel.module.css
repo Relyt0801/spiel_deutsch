@@ -95,3 +95,37 @@
 
 .unmortBtn { background: rgba(0,80,180,0.3) !important; border-color: rgba(100,150,255,0.3) !important; }
 .unmortBtn:hover { background: rgba(0,80,180,0.6) !important; }
+
+.sellAllBtn { background: rgba(150,40,0,0.35) !important; border-color: rgba(255,120,40,0.35) !important; font-weight: 600; }
+.sellAllBtn:hover { background: rgba(150,40,0,0.65) !important; }
+
+.panelHead {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #8fe0a0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding-bottom: 2px;
+}
+
+.propTop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  border: 1px solid rgba(0,0,0,0.4);
+}
+
+.propState {
+  margin-left: auto;
+  font-size: 0.68rem;
+  color: #d4af37;
+  white-space: nowrap;
+  flex-shrink: 0;
+}

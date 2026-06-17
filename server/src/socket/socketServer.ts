@@ -174,6 +174,21 @@ export function setupSocketHandlers(io: Server): void {
       room?.handleUnmortgage(socket.id, propertyIndex)
     })
 
+    socket.on('game:sell-all-buildings', ({ propertyIndex }) => {
+      const room = roomManager.getRoomBySocket(socket.id)
+      room?.handleSellAllBuildings(socket.id, propertyIndex)
+    })
+
+    socket.on('game:auction-all', () => {
+      const room = roomManager.getRoomBySocket(socket.id)
+      room?.handleAuctionAll(socket.id)
+    })
+
+    socket.on('room:update-settings', ({ settings }) => {
+      const room = roomManager.getRoomBySocket(socket.id)
+      room?.updateSettings(socket.id, settings)
+    })
+
     // ─── AUCTION ─────────────────────────────────────────────────────────
     socket.on('auction:bid', ({ amount }) => {
       const room = roomManager.getRoomBySocket(socket.id)

@@ -35,9 +35,22 @@ export function registerSocketHandlers(): void {
     useUiStore.getState().setAppPhase('lobby')
   })
 
-  socket.on('room:lobby-update', ({ lobbyPlayers, allReady }) => {
+  socket.on('room:lobby-update', ({ lobbyPlayers, allReady, settings }) => {
     useGameStore.getState().setLobbyPlayers(lobbyPlayers)
     useGameStore.getState().setLobbyAllReady(allReady)
+    if (settings) useGameStore.getState().setLobbySettings(settings)
+  })
+
+  socket.on('room:settings-update', ({ settings }) => {
+    useGameStore.getState().setLobbySettings(settings)
+  })
+
+  socket.on('game:turn-tick', ({ timeRemaining }) => {
+    useUiStore.getState().setTurnTime(timeRemaining)
+  })
+
+  socket.on('trade:tick', ({ timeRemaining }) => {
+    useUiStore.getState().setTradeTime(timeRemaining)
   })
 
   socket.on('room:kicked', () => {
@@ -180,6 +193,7 @@ export function registerSocketHandlers(): void {
 
   socket.on('trade:accepted', ({ gameState }) => {
     if (gameState) useGameStore.getState().setGameState(gameState)
+    useUiStore.getState().setTradeTime(null)
     useUiStore.getState().closeModal()
   })
 
@@ -200,9 +214,12 @@ export function registerSocketHandlers(): void {
   socket.on('trade:rejected', ({ trade, byId }) => {
     const gs = useGameStore.getState().gameState
     useUiStore.getState().closeModal()
-    if (gs && trade) {
-      const cancellerId = byId ?? trade.toPlayerId
-      const canceller = gs.players.find((p: { id: string; name: string }) => p.id === cancellerId)
+    useUiStore.getState().setTradeTime(null)
+    if (byId === null) {
+      useUiStore.getState().setError('Tausch abgebrochen – Zeit abgelaufen.')
+      setTimeout(() => useUiStore.getState().setError(null), 3500)
+    } else if (gs && trade) {
+      const canceller = gs.players.find((p: { id: string; name: string }) => p.id === byId)
       if (canceller) {
         useUiStore.getState().setError(`${canceller.name} hat den Tausch abgebrochen.`)
         setTimeout(() => useUiStore.getState().setError(null), 3500)

@@ -32,6 +32,8 @@ interface UiStore {
   diceAnimating: boolean
   selectedPropertyIndex: number | null
   errorMessage: string | null
+  turnTimeRemaining: number | null
+  tradeTimeRemaining: number | null
 
   setAppPhase: (p: UiStore['appPhase']) => void
   openModal: (modal: ModalType, data?: unknown) => void
@@ -41,6 +43,8 @@ interface UiStore {
   setDiceAnimating: (v: boolean) => void
   setSelectedProperty: (idx: number | null) => void
   setError: (msg: string | null) => void
+  setTurnTime: (v: number | null) => void
+  setTradeTime: (v: number | null) => void
 }
 
 export const useUiStore = create<UiStore>((set) => ({
@@ -52,6 +56,8 @@ export const useUiStore = create<UiStore>((set) => ({
   diceAnimating: false,
   selectedPropertyIndex: null,
   errorMessage: null,
+  turnTimeRemaining: null,
+  tradeTimeRemaining: null,
 
   setAppPhase: (p) => set({ appPhase: p }),
   openModal: (modal, data = null) => set({ activeModal: modal, modalData: data as UiStore['modalData'] }),
@@ -61,4 +67,6 @@ export const useUiStore = create<UiStore>((set) => ({
   setDiceAnimating: (v) => set({ diceAnimating: v }),
   setSelectedProperty: (idx) => set({ selectedPropertyIndex: idx }),
   setError: (msg) => set({ errorMessage: msg }),
+  setTurnTime: (v) => set({ turnTimeRemaining: v }),
+  setTradeTime: (v) => set({ tradeTimeRemaining: v }),
 }))
