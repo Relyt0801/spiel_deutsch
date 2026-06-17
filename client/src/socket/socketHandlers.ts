@@ -111,8 +111,9 @@ export function registerSocketHandlers(): void {
     const myId = useSocketStore.getState().myPlayerId
     const currentPlayer = data.gameState.players[data.gameState.currentPlayerIndex]
     const isMyTurn = currentPlayer?.id === myId
-    // Open modal only when I have a decision or I'm directly involved in rent
-    if ((data.canBuy && isMyTurn) || (data.rentDue !== null && (isMyTurn || data.ownerId === myId))) {
+    // ONLY the active player sees the buy / rent popup. Everyone else (incl. the
+    // property owner receiving rent) just reads it in the log — no modal.
+    if (isMyTurn && (data.canBuy || data.rentDue !== null)) {
       setTimeout(() => useUiStore.getState().openModal('property', data), 650)
     }
   })

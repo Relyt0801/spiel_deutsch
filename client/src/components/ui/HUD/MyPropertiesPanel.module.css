@@ -56,6 +56,47 @@
   flex-shrink: 0;
 }
 
+/* ── Money overview ───────────────────────────────────────────────────────── */
+.cashRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.55rem 0.75rem 0.4rem;
+  flex-shrink: 0;
+}
+.cashLabel {
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #e8d0a0;
+}
+.cashValue {
+  font-size: 0.95rem;
+  font-weight: 800;
+  color: #ffd24a;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+.playersMini {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 0.6rem 0.5rem;
+  border-bottom: 1px solid rgba(180, 120, 50, 0.3);
+  flex-shrink: 0;
+}
+.playerMini {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.68rem;
+  color: rgba(232, 208, 160, 0.85);
+  padding: 1px 0;
+}
+.miniBankrupt { opacity: 0.4; text-decoration: line-through; }
+.miniDot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.miniName { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.miniMoney { font-weight: 700; color: #d4af37; flex-shrink: 0; }
+
 .empty {
   padding: 1rem 0.75rem;
   font-size: 0.75rem;

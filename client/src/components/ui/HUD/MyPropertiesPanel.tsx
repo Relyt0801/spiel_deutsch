@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { BOARD_SQUARES, PROPERTY_COLOR_HEX } from '../../../config/boardData'
 import type { GameState, PropertyState } from '../../../types/game'
+import { PLAYER_COLORS } from '../../../types/game'
 import styles from './MyPropertiesPanel.module.css'
 
 interface Props {
@@ -66,17 +67,35 @@ export function MyPropertiesPanel({ gameState, myId }: Props) {
     if (g) groupCounts[g] = (groupCounts[g] ?? 0) + 1
   }
 
+  const me = gameState.players.find(p => p.id === myId)
+  const players = gameState.players
+
   return (
     <div className={styles.wrapper}>
       <button
         className={`${styles.toggleBtn} ${open ? styles.active : ''}`}
         onClick={() => setOpen(v => !v)}
       >
-        🏘️ Meine Straßen ({myProperties.length})
+        💼 Mein Konto ({myProperties.length})
       </button>
 
       {open && (
         <div className={styles.panel}>
+          {/* Money overview */}
+          <div className={styles.cashRow}>
+            <span className={styles.cashLabel}>💰 Mein Geld</span>
+            <span className={styles.cashValue}>{(me?.money ?? 0).toLocaleString('de-DE')}€</span>
+          </div>
+          <div className={styles.playersMini}>
+            {players.map(p => (
+              <div key={p.id} className={`${styles.playerMini} ${p.isBankrupt ? styles.miniBankrupt : ''}`}>
+                <span className={styles.miniDot} style={{ background: PLAYER_COLORS[p.color] || '#888' }} />
+                <span className={styles.miniName}>{p.name}{p.id === myId ? ' (Du)' : ''}</span>
+                <span className={styles.miniMoney}>{p.money.toLocaleString('de-DE')}€</span>
+              </div>
+            ))}
+          </div>
+
           <div className={styles.header}>Meine Grundstücke</div>
 
           {myProperties.length === 0 ? (

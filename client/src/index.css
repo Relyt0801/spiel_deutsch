@@ -22,6 +22,12 @@ html, body, #root {
   font-family: var(--font-sans);
   background: #9B2020;
   color: var(--remi-white);
+  /* Prevent long-press text selection / translate & search popups on mobile */
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 button {
@@ -31,4 +37,11 @@ button {
 
 input {
   font-family: inherit;
+}
+
+/* Re-enable selection only where the user actually types */
+input, textarea {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  user-select: text;
 }
