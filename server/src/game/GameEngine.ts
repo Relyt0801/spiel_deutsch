@@ -679,7 +679,8 @@ export function unmortgage(state: GameState, playerId: string, propertyIndex: nu
 }
 
 export function proposeTrade(state: GameState, offer: Omit<TradeOffer, 'id' | 'status' | 'confirmedBy'>): GameState {
-  const trade: TradeOffer = { ...offer, id: uuidv4(), status: 'pending', confirmedBy: [] }
+  // The proposer implicitly confirms their own offer; the partner still has to confirm.
+  const trade: TradeOffer = { ...offer, id: uuidv4(), status: 'pending', confirmedBy: [offer.fromPlayerId] }
   return { ...state, activeTrade: trade, gamePhase: 'trading' }
 }
 
@@ -690,6 +691,8 @@ export function counterTrade(
 ): GameState {
   if (!state.activeTrade) return state
   const prev = state.activeTrade
+  // The counter terms are from the counter-sender's perspective; they implicitly confirm,
+  // the partner must confirm again (any change resets the other side's acceptance).
   const counter: TradeOffer = {
     id: prev.id,
     fromPlayerId: counterFromId,
@@ -699,7 +702,7 @@ export function counterTrade(
     offeredMoney: terms.offeredMoney,
     requestedMoney: terms.requestedMoney,
     status: 'countered',
-    confirmedBy: [],
+    confirmedBy: [counterFromId],
   }
   return { ...state, activeTrade: counter }
 }

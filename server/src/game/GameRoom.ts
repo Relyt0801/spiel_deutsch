@@ -2,7 +2,7 @@ import type { Server } from 'socket.io'
 import {
   GameState, Player, initGameState, rollDice, movePlayer, applyLanding,
   buyProperty, startAuction, placeBid, passAuction, endAuction,
-  buyHouse, buyHotel, sellHouse, sellHotel, mortgage, unmortgage, proposeTrade, acceptTrade,
+  buyHouse, buyHotel, sellHouse, sellHotel, mortgage, unmortgage, proposeTrade,
   counterTrade, confirmTrade,
   declareBankruptcy, handleEndTurn, advanceTurn, applyCardEffect,
 } from './GameEngine'
@@ -240,19 +240,30 @@ export class GameRoom {
       this.pendingBotTimers.delete(timer)
       if (!this.state?.activeTrade || this.state.activeTrade.id !== tradeId) return
       const trade = this.state.activeTrade
+      // Only respond if the bot is actually part of this trade and hasn't confirmed yet.
+      if (trade.fromPlayerId !== botId && trade.toPlayerId !== botId) return
+      if (trade.confirmedBy.includes(botId)) return
       const bot = this.state.players.find(p => p.id === botId)
       if (!bot) return
 
       const getVal = (props: number[]) =>
         props.reduce((sum, i) => sum + (BOARD_SQUARES[i]?.price ?? 0), 0)
 
-      const receives = getVal(trade.offeredProperties) + trade.offeredMoney
-      const gives = getVal(trade.requestedProperties) + trade.requestedMoney
+      // Evaluate from the bot's perspective regardless of who currently "owns" the offer.
+      const botIsFrom = trade.fromPlayerId === botId
+      const receives = botIsFrom
+        ? getVal(trade.requestedProperties) + trade.requestedMoney
+        : getVal(trade.offeredProperties) + trade.offeredMoney
+      const gives = botIsFrom
+        ? getVal(trade.offeredProperties) + trade.offeredMoney
+        : getVal(trade.requestedProperties) + trade.requestedMoney
 
       if (receives >= gives * 0.92) {
-        this.handleAcceptTrade(botId, tradeId)
-      } else if (receives >= gives * 0.65 && bot.money > gives + 150) {
+        this.handleConfirmTrade(botId, tradeId)
+      } else if (!botIsFrom && receives >= gives * 0.65 && bot.money > gives + 150) {
         const extraMoney = Math.floor((gives - receives) * 0.8)
+        // Counter from the bot's perspective: it gives what was requested of it (+ money),
+        // and asks for what was offered plus a little extra cash.
         this.handleCounterTrade(botId, {
           offeredProperties: trade.requestedProperties,
           requestedProperties: trade.offeredProperties,
@@ -449,25 +460,6 @@ export class GameRoom {
     }
   }
 
-  handleAcceptTrade(socketId: string, tradeId: string): void {
-    if (!this.state) return
-    const trade = this.state.activeTrade
-    if (!trade || trade.id !== tradeId) return
-    const confirmedBy = [socketId]
-    this.state = { ...this.state, activeTrade: { ...trade, status: 'pending_confirm', confirmedBy } }
-    this.broadcast('trade:confirm-update', { trade: this.state.activeTrade })
-    this.broadcastState()
-    const otherParty = trade.fromPlayerId === socketId ? trade.toPlayerId : trade.fromPlayerId
-    const otherPlayer = this.state.players.find(p => p.id === otherParty)
-    if (otherPlayer?.isBot) {
-      const t = setTimeout(() => {
-        this.pendingBotTimers.delete(t)
-        if (this.state?.activeTrade?.id === tradeId) this.handleConfirmTrade(otherParty, tradeId)
-      }, 1500)
-      this.pendingBotTimers.add(t)
-    }
-  }
-
   handleCounterTrade(socketId: string, terms: { offeredProperties: number[]; requestedProperties: number[]; offeredMoney: number; requestedMoney: number }): void {
     if (!this.state?.activeTrade) return
     const trade = this.state.activeTrade
@@ -483,6 +475,9 @@ export class GameRoom {
 
   handleConfirmTrade(socketId: string, tradeId: string): void {
     if (!this.state?.activeTrade || this.state.activeTrade.id !== tradeId) return
+    const active = this.state.activeTrade
+    // Only the two trade partners may confirm.
+    if (active.fromPlayerId !== socketId && active.toPlayerId !== socketId) return
     this.state = confirmTrade(this.state, socketId)
     if (!this.state.activeTrade) {
       this.broadcast('trade:accepted', { trade: null, gameState: this.state })
@@ -493,12 +488,9 @@ export class GameRoom {
       const currentTrade = this.state.activeTrade
       const otherParty = currentTrade.fromPlayerId === socketId ? currentTrade.toPlayerId : currentTrade.fromPlayerId
       const otherPlayer = this.state.players.find(p => p.id === otherParty)
+      // Let the bot re-evaluate (it may confirm, counter or reject) rather than blindly accept.
       if (otherPlayer?.isBot && !currentTrade.confirmedBy.includes(otherParty)) {
-        const t = setTimeout(() => {
-          this.pendingBotTimers.delete(t)
-          if (this.state?.activeTrade?.id === tradeId) this.handleConfirmTrade(otherParty, tradeId)
-        }, 1500)
-        this.pendingBotTimers.add(t)
+        this.scheduleBotTradeResponse(otherParty, tradeId)
       }
     }
   }
@@ -506,8 +498,10 @@ export class GameRoom {
   handleRejectTrade(socketId: string, tradeId: string): void {
     if (!this.state?.activeTrade || this.state.activeTrade.id !== tradeId) return
     const trade = this.state.activeTrade
+    // Only the two trade partners may cancel.
+    if (trade.fromPlayerId !== socketId && trade.toPlayerId !== socketId) return
     this.state = { ...this.state, activeTrade: null, gamePhase: 'end_turn' }
-    this.broadcast('trade:rejected', { trade })
+    this.broadcast('trade:rejected', { trade, byId: socketId })
     this.broadcastState()
   }
 
