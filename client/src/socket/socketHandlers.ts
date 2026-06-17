@@ -78,7 +78,11 @@ export function registerSocketHandlers(): void {
     const myId = useSocketStore.getState().myPlayerId
     const currentPlayer = gameState.players[gameState.currentPlayerIndex]
     const isMyTurn = currentPlayer?.id === myId
-    if (useUiStore.getState().activeModal === 'property' && (gameState.gamePhase !== 'buying' || !isMyTurn)) {
+    const md = useUiStore.getState().modalData as { infoOnly?: boolean } | null
+    if (
+      useUiStore.getState().activeModal === 'property' && !md?.infoOnly &&
+      (gameState.gamePhase !== 'buying' || !isMyTurn)
+    ) {
       useUiStore.getState().closeModal()
     }
     useGameStore.getState().setGameState(gameState)

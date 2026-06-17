@@ -266,6 +266,56 @@
   border-radius: 1px;
 }
 
+/* ─── Clickable street feedback ───────────────────────────────────────────── */
+.clickable { cursor: pointer; }
+.clickable:hover { background: #F7E2BD; }
+
+/* ─── Owner deed tag (square shape ≠ round player pieces) ──────────────────── */
+.ownerTag {
+  position: absolute;
+  top: 1px;
+  left: 1px;
+  width: 13px;
+  height: 13px;
+  border-radius: 3px;
+  border: 1.5px solid #fff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9;
+  pointer-events: none;
+}
+.ownerTagIcon {
+  font-size: 7px;
+  line-height: 1;
+  filter: drop-shadow(0 0 1px rgba(0,0,0,0.6));
+}
+
+/* ─── Overview / zoom toggle ──────────────────────────────────────────────── */
+.overviewBtn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 30;
+  background: rgba(0,0,0,0.7);
+  color: #fff;
+  border: 1px solid rgba(204,0,0,0.4);
+  border-radius: 20px;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  pointer-events: auto;
+  transition: background 0.2s;
+}
+.overviewBtn:hover { background: rgba(40,0,0,0.85); border-color: rgba(204,0,0,0.7); }
+
+@media (max-width: 700px), (max-height: 700px) {
+  .overviewBtn { top: 8px; right: 8px; padding: 0.35rem 0.7rem; font-size: 0.72rem; }
+}
+
 /* ─── Center ──────────────────────────────────────────────────────────────── */
 .center {
   position: absolute;

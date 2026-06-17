@@ -4,10 +4,10 @@ import {
   buyProperty, startAuction, placeBid, passAuction, endAuction,
   buyHouse, buyHotel, sellHouse, sellHotel, mortgage, unmortgage, proposeTrade,
   counterTrade, confirmTrade,
-  declareBankruptcy, handleEndTurn, advanceTurn, applyCardEffect,
+  declareBankruptcy, handleEndTurn, advanceTurn, applyCardEffect, sendToJail,
 } from './GameEngine'
-import type { TradeOffer } from './GameEngine'
-import { BOARD_SQUARES, COLOR_GROUPS } from '../config/boardData'
+import type { TradeOffer, DiceRoll } from './GameEngine'
+import { BOARD_SQUARES, COLOR_GROUPS, DOUBLE_IN_ROW_JAIL } from '../config/boardData'
 import { logger } from '../utils/logger'
 
 export type LobbyPlayer = {
@@ -143,15 +143,8 @@ export class GameRoom {
 
       switch (this.state.gamePhase) {
         case 'rolling': {
+          // handleRollDice → startMovement schedules the bot's movement completion itself.
           this.handleRollDice(botId)
-          const steps = this.state?.currentDiceRoll?.total ?? 6
-          const moveTimer = setTimeout(() => {
-            this.pendingBotTimers.delete(moveTimer)
-            if (this.state?.gamePhase === 'moving') {
-              this.handleMovementComplete(botId)
-            }
-          }, 2200 + steps * 380 + 600)
-          this.pendingBotTimers.add(moveTimer)
           break
         }
         case 'buying': {
@@ -300,16 +293,38 @@ export class GameRoom {
 
   handleRollDice(socketId: string): void {
     if (!this.state) return
-    const currentPlayer = this.state.players[this.state.currentPlayerIndex]
+    const cpIdx = this.state.currentPlayerIndex
+    const currentPlayer = this.state.players[cpIdx]
     if (currentPlayer.id !== socketId) return
     if (this.state.gamePhase !== 'rolling') return
 
     const roll = rollDice()
+    const newDoubles = roll.isDouble ? currentPlayer.doublesCount + 1 : 0
+    this.state = {
+      ...this.state,
+      players: this.state.players.map((p, i) => i === cpIdx ? { ...p, doublesCount: newDoubles } : p),
+    }
+
+    // Third double in a row → straight to the Nachsitz-Zimmer, no movement.
+    if (roll.isDouble && newDoubles >= DOUBLE_IN_ROW_JAIL) {
+      this.state = { ...this.state, currentDiceRoll: roll }
+      this.broadcast('game:dice-rolled', { playerId: socketId, roll, gameState: this.state })
+      this.state = sendToJail(this.state, socketId)
+      this.broadcast('game:go-to-jail', { playerId: socketId, gameState: this.state })
+      this.broadcastState()
+      return
+    }
+
+    this.startMovement(socketId, roll, currentPlayer.position)
+  }
+
+  /** Broadcasts the roll, animates the piece step-by-step, and (for bots) auto-completes movement. */
+  private startMovement(socketId: string, roll: DiceRoll, startPos: number): void {
+    if (!this.state) return
     this.state = { ...this.state, currentDiceRoll: roll, gamePhase: 'moving' }
     this.broadcast('game:dice-rolled', { playerId: socketId, roll, gameState: this.state })
 
     const steps = roll.total
-    const startPos = currentPlayer.position
     const DICE_ANIM_MS = 2000
     const STEP_MS = 380
     for (let i = 0; i < steps; i++) {
@@ -324,6 +339,16 @@ export class GameRoom {
           totalSteps: steps,
         })
       }, DICE_ANIM_MS + i * STEP_MS)
+    }
+
+    // Bots have no client to report movement completion, so schedule it server-side.
+    const mover = this.state.players.find(p => p.id === socketId)
+    if (mover?.isBot) {
+      const moveTimer = setTimeout(() => {
+        this.pendingBotTimers.delete(moveTimer)
+        if (this.state?.gamePhase === 'moving') this.handleMovementComplete(socketId)
+      }, DICE_ANIM_MS + steps * STEP_MS + 800)
+      this.pendingBotTimers.add(moveTimer)
     }
   }
 
@@ -410,6 +435,20 @@ export class GameRoom {
     const currentPlayer = this.state.players[this.state.currentPlayerIndex]
     if (currentPlayer.id !== socketId || this.state.gamePhase !== 'card_drawn') return
     this.state = applyCardEffect(this.state, socketId)
+    // A movement card ("Rücke vor zu …") may have dropped the player on a buyable
+    // property — emit the landing so the buy modal opens for them.
+    if (this.state.gamePhase === 'buying') {
+      const mover = this.state.players[this.state.currentPlayerIndex]
+      const sq = BOARD_SQUARES[mover.position]
+      this.broadcast('game:landed-property', {
+        playerId: socketId,
+        propertyIndex: mover.position,
+        ownerId: null,
+        rentDue: null,
+        canBuy: mover.money >= (sq?.price ?? 0),
+        gameState: this.state,
+      })
+    }
     this.broadcastState()
   }
 
@@ -540,10 +579,12 @@ export class GameRoom {
       const roll = rollDice()
       if (roll.isDouble) {
         this.state.players = this.state.players.map((p, i) =>
-          i === pIdx ? { ...p, jailTurns: 0 } : p
+          i === pIdx ? { ...p, jailTurns: 0, doublesCount: 0 } : p
         )
-        this.state = { ...this.state, currentDiceRoll: roll, gamePhase: 'moving' }
-        this.broadcast('game:dice-rolled', { playerId: socketId, roll, gameState: this.state })
+        // Freed by Pasch: actually move the piece. Clear the double flag so the
+        // end-of-turn logic does NOT grant a bonus roll for leaving jail.
+        this.startMovement(socketId, { ...roll, isDouble: false }, player.position)
+        return
       } else {
         const newJailTurns = player.jailTurns + 1
         if (newJailTurns > 3) {

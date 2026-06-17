@@ -3,7 +3,7 @@ import {
   BOARD_SQUARES, COLOR_GROUPS, CHANCE_CARD_IDS, COMMUNITY_CARD_IDS,
   JAIL_INDEX, GO_INDEX, GO_TO_JAIL_INDEX,
   JAIL_BAIL, PASS_GO_AMOUNT, STARTING_MONEY, BANK_HOUSES, BANK_HOTELS,
-  DOUBLE_IN_ROW_JAIL, RAILROAD_INDICES, UTILITY_INDICES,
+  RAILROAD_INDICES, UTILITY_INDICES,
 } from '../config/boardData'
 import { ALL_CARDS } from '../config/cards'
 
@@ -391,9 +391,9 @@ export function drawCard(
 }
 
 export function applyCardEffect(state: GameState, playerId: string): GameState {
-  if (!state.pendingCardAction) return advanceTurn(state)
+  if (!state.pendingCardAction) return { ...state, gamePhase: 'end_turn' }
   const card = ALL_CARDS[state.pendingCardAction.id as string]
-  if (!card) return advanceTurn({ ...state, pendingCardAction: null })
+  if (!card) return { ...state, pendingCardAction: null, gamePhase: 'end_turn' }
 
   let s: GameState = { ...state, pendingCardAction: null }
   const pIdx = s.players.findIndex(p => p.id === playerId)
@@ -508,7 +508,9 @@ export function applyCardEffect(state: GameState, playerId: string): GameState {
     }
   }
 
-  return advanceTurn(s)
+  // End the player's action; the normal end-turn flow then handles doubles re-rolls.
+  s.gamePhase = 'end_turn'
+  return s
 }
 
 export function startAuction(state: GameState, propertyIndex: number): GameState {
@@ -838,26 +840,12 @@ export function advanceTurn(state: GameState): GameState {
 export function handleEndTurn(state: GameState): GameState {
   const currentPlayer = state.players[state.currentPlayerIndex]
 
-  // If doubles were rolled and not in jail, player gets another turn
-  if (state.currentDiceRoll?.isDouble && currentPlayer.jailTurns === 0) {
-    const updatedPlayers = state.players.map((p, i) =>
-      i === state.currentPlayerIndex ? { ...p, doublesCount: p.doublesCount + 1 } : p
-    )
-    const updatedPlayer = updatedPlayers[state.currentPlayerIndex]
-
-    if (updatedPlayer.doublesCount >= DOUBLE_IN_ROW_JAIL) {
-      let s = { ...state, players: updatedPlayers }
-      s = sendToJail(s, currentPlayer.id)
-      return advanceTurn(s)
-    }
-
-    return {
-      ...state,
-      players: updatedPlayers,
-      gamePhase: 'rolling',
-      currentDiceRoll: null,
-    }
+  // Doubles grant another roll for the same player. The running count of
+  // consecutive doubles (and the 3rd-double-goes-to-jail rule) is handled at
+  // roll time in handleRollDice, so here we only need to hand back the dice.
+  if (state.currentDiceRoll?.isDouble && currentPlayer.jailTurns === 0 && !currentPlayer.isBankrupt) {
+    return { ...state, gamePhase: 'rolling', currentDiceRoll: null }
   }
 
-  return advanceTurn({ ...state, players: state.players.map(p => ({ ...p, doublesCount: 0 })) })
+  return advanceTurn(state)
 }

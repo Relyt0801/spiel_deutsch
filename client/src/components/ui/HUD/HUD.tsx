@@ -32,6 +32,8 @@ export function HUD() {
 
   const canRoll = isMyTurn && (phase === 'rolling') && !isAnimating && !diceAnimating
   const canEndTurn = isMyTurn && phase === 'end_turn' && !isAnimating
+  // Doubles grant another roll: clicking "end turn" hands the dice back to the same player.
+  const willRollAgain = canEndTurn && !!gameState.currentDiceRoll?.isDouble && currentPlayer?.jailTurns === 0
 
   const handleRoll = () => getSocket().emit('game:roll-dice')
   const handleEndTurn = () => getSocket().emit('game:end-turn')
@@ -115,8 +117,8 @@ export function HUD() {
           )}
 
           {canEndTurn && (
-            <button className={styles.btnEnd} onClick={handleEndTurn}>
-              ✅ Zug beenden
+            <button className={willRollAgain ? styles.btnRoll : styles.btnEnd} onClick={handleEndTurn}>
+              {willRollAgain ? '🎲 Pasch! Nochmal würfeln' : '✅ Zug beenden'}
             </button>
           )}
 

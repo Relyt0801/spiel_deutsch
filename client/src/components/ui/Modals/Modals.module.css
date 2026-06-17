@@ -60,6 +60,18 @@
   margin-bottom: 0.5rem;
 }
 
+.ownerDot {
+  display: inline-block;
+  width: 11px;
+  height: 11px;
+  border-radius: 3px;
+  margin-right: 6px;
+  vertical-align: -1px;
+  border: 1px solid rgba(255,255,255,0.5);
+}
+
+.mortNote { color: #f0a0a0; }
+
 .smallText {
   font-size: 0.8rem;
   color: rgba(255,255,255,0.4);

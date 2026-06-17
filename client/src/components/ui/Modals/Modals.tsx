@@ -54,15 +54,118 @@ interface PropertyModalProps {
   closeModal: () => void
 }
 
+function RentTable({ square }: { square: typeof BOARD_SQUARES[number] }) {
+  if (square.type === 'property') {
+    return (
+      <div className={styles.rentTable}>
+        {[
+          { n: 0, label: 'Ohne Gebäude', amount: square.rent[0] },
+          { n: 1, label: '1 Klassenraum', amount: square.rent[1] },
+          { n: 2, label: '2 Klassenräume', amount: square.rent[2] },
+          { n: 3, label: '3 Klassenräume', amount: square.rent[3] },
+          { n: 4, label: '4 Klassenräume', amount: square.rent[4] },
+        ].map(({ n, label, amount }) => (
+          <div key={label} className={styles.rentRow}>
+            <span className={styles.houseSlots}>
+              {Array.from({ length: 4 }, (_, i) => (
+                <span key={i} className={i < n ? styles.houseFilled : styles.houseEmpty} />
+              ))}
+            </span>
+            <span className={styles.rentLabel}>{label}</span>
+            <span className={styles.rentAmt}>{amount}€</span>
+          </div>
+        ))}
+        <div className={styles.rentRow}>
+          <span className={styles.houseSlots}>
+            <span className={styles.hotelBlock}>H</span>
+          </span>
+          <span className={styles.rentLabel}>Schulgebäude</span>
+          <span className={styles.rentAmt}>{square.rent[5]}€</span>
+        </div>
+        <div className={styles.rentSep} />
+        <div className={styles.rentRow}>
+          <span className={styles.houseSlots} />
+          <span className={styles.rentLabel} style={{ opacity: 0.5 }}>Klassenraum kostet</span>
+          <span className={styles.rentAmt} style={{ opacity: 0.5 }}>{square.houseCost}€</span>
+        </div>
+      </div>
+    )
+  }
+  if (square.type === 'railroad') {
+    return (
+      <div className={styles.rentTable}>
+        {[25, 50, 100, 200].map((amt, i) => (
+          <div key={i} className={styles.rentRow}>
+            <span className={styles.houseSlots}>
+              {Array.from({ length: 4 }, (_, j) => (
+                <span key={j} className={j <= i ? styles.busFilled : styles.houseEmpty} />
+              ))}
+            </span>
+            <span className={styles.rentLabel}>{i + 1} Schulbus{i > 0 ? 'se' : ''}</span>
+            <span className={styles.rentAmt}>{amt}€</span>
+          </div>
+        ))}
+      </div>
+    )
+  }
+  if (square.type === 'utility') {
+    return (
+      <div className={styles.rentTable}>
+        <div className={styles.rentRow}>
+          <span className={styles.rentLabel}>1 Versorgungswerk</span>
+          <span className={styles.rentAmt}>Würfel × 4</span>
+        </div>
+        <div className={styles.rentRow}>
+          <span className={styles.rentLabel}>Beide Werke</span>
+          <span className={styles.rentAmt}>Würfel × 10</span>
+        </div>
+      </div>
+    )
+  }
+  return null
+}
+
 function PropertyModal({ data, myId, gameState, closeModal }: PropertyModalProps) {
   const propertyIndex = data.propertyIndex as number
   const canBuy = data.canBuy as boolean
   const ownerId = data.ownerId as string | null
   const rentDue = data.rentDue as number | null
+  const infoOnly = (data.infoOnly as boolean) ?? false
   const square = BOARD_SQUARES[propertyIndex]
   const currentPlayer = gameState.players[gameState.currentPlayerIndex]
   const isMyTurn = currentPlayer?.id === myId
   const colorHex = square.color ? PROPERTY_COLOR_HEX[square.color] : null
+
+  // Read-only info card (opened by clicking a street on the board)
+  if (infoOnly) {
+    const ps = gameState.properties.find(p => p.boardIndex === propertyIndex)
+    const owner = ps?.ownerId ? gameState.players.find(pl => pl.id === ps.ownerId) : null
+    return (
+      <div>
+        {colorHex && <div className={styles.propStrip} style={{ background: colorHex }} />}
+        <h2 className={styles.modalTitle}>{square.name.replace('\n', ' ')}</h2>
+        {square.price != null && (
+          <p className={styles.propPrice}>💰 Kaufpreis: <strong>{square.price}€</strong></p>
+        )}
+        <p className={styles.rentInfo}>
+          {owner ? (
+            <>
+              <span className={styles.ownerDot} style={{ background: PLAYER_COLORS[owner.color] || '#888' }} />
+              Eigentümer: <strong>{owner.name}{owner.id === myId ? ' (Du)' : ''}</strong>
+              {ps?.isMortgaged && <span className={styles.mortNote}> · 📋 Hypothek aktiv</span>}
+            </>
+          ) : (
+            <span style={{ opacity: 0.7 }}>Noch frei – nicht gekauft</span>
+          )}
+        </p>
+        <RentTable square={square} />
+        {square.mortgageValue != null && (
+          <p className={styles.smallText}>Hypothekenwert: {square.mortgageValue}€</p>
+        )}
+        <button className={styles.btnClose} onClick={closeModal}>Schließen</button>
+      </div>
+    )
+  }
 
   return (
     <div>
@@ -72,67 +175,7 @@ function PropertyModal({ data, myId, gameState, closeModal }: PropertyModalProps
       {canBuy && isMyTurn && (
         <>
           <p className={styles.propPrice}>💰 Kaufpreis: <strong>{square.price}€</strong></p>
-          {square.type === 'property' && (
-            <div className={styles.rentTable}>
-              {[
-                { n: 0, label: 'Ohne Gebäude', amount: square.rent[0] },
-                { n: 1, label: '1 Klassenraum', amount: square.rent[1] },
-                { n: 2, label: '2 Klassenräume', amount: square.rent[2] },
-                { n: 3, label: '3 Klassenräume', amount: square.rent[3] },
-                { n: 4, label: '4 Klassenräume', amount: square.rent[4] },
-              ].map(({ n, label, amount }) => (
-                <div key={label} className={styles.rentRow}>
-                  <span className={styles.houseSlots}>
-                    {Array.from({ length: 4 }, (_, i) => (
-                      <span key={i} className={i < n ? styles.houseFilled : styles.houseEmpty} />
-                    ))}
-                  </span>
-                  <span className={styles.rentLabel}>{label}</span>
-                  <span className={styles.rentAmt}>{amount}€</span>
-                </div>
-              ))}
-              <div className={styles.rentRow}>
-                <span className={styles.houseSlots}>
-                  <span className={styles.hotelBlock}>H</span>
-                </span>
-                <span className={styles.rentLabel}>Schulgebäude</span>
-                <span className={styles.rentAmt}>{square.rent[5]}€</span>
-              </div>
-              <div className={styles.rentSep} />
-              <div className={styles.rentRow}>
-                <span className={styles.houseSlots} />
-                <span className={styles.rentLabel} style={{ opacity: 0.5 }}>Klassenraum kostet</span>
-                <span className={styles.rentAmt} style={{ opacity: 0.5 }}>{square.houseCost}€</span>
-              </div>
-            </div>
-          )}
-          {square.type === 'railroad' && (
-            <div className={styles.rentTable}>
-              {[25, 50, 100, 200].map((amt, i) => (
-                <div key={i} className={styles.rentRow}>
-                  <span className={styles.houseSlots}>
-                    {Array.from({ length: 4 }, (_, j) => (
-                      <span key={j} className={j <= i ? styles.busFilled : styles.houseEmpty} />
-                    ))}
-                  </span>
-                  <span className={styles.rentLabel}>{i + 1} Schulbus{i > 0 ? 'se' : ''}</span>
-                  <span className={styles.rentAmt}>{amt}€</span>
-                </div>
-              ))}
-            </div>
-          )}
-          {square.type === 'utility' && (
-            <div className={styles.rentTable}>
-              <div className={styles.rentRow}>
-                <span className={styles.rentLabel}>1 Versorgungswerk</span>
-                <span className={styles.rentAmt}>Würfel × 4</span>
-              </div>
-              <div className={styles.rentRow}>
-                <span className={styles.rentLabel}>Beide Werke</span>
-                <span className={styles.rentAmt}>Würfel × 10</span>
-              </div>
-            </div>
-          )}
+          <RentTable square={square} />
           <div className={styles.btnRow}>
             <button className={styles.btnBuy} onClick={() => { getSocket().emit('game:buy-property'); closeModal() }}>
               ✅ Kaufen ({square.price}€)
