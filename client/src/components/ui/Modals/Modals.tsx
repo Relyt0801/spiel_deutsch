@@ -3,7 +3,7 @@ import { useUiStore } from '../../../store/uiStore'
 import { useGameStore } from '../../../store/gameStore'
 import { useSocketStore } from '../../../store/socketStore'
 import { getSocket } from '../../../socket/socketClient'
-import { BOARD_SQUARES, PROPERTY_COLOR_HEX } from '../../../config/boardData'
+import { BOARD_SQUARES, PROPERTY_COLOR_HEX, COLOR_GROUPS } from '../../../config/boardData'
 import { PLAYER_COLORS } from '../../../types/game'
 import type { GameState, TradeOffer } from '../../../types/game'
 import styles from './Modals.module.css'
@@ -125,6 +125,76 @@ function RentTable({ square }: { square: typeof BOARD_SQUARES[number] }) {
   return null
 }
 
+function OwnerControls({ propertyIndex, gameState, myId }: {
+  propertyIndex: number; gameState: GameState; myId: string | null
+}) {
+  const sq = BOARD_SQUARES[propertyIndex]
+  const prop = gameState.properties[propertyIndex]
+  if (!prop || prop.ownerId !== myId) return null
+
+  const name = sq.name.replace('\n', ' ')
+  const me = gameState.players.find(p => p.id === myId)
+  const currentPlayer = gameState.players[gameState.currentPlayerIndex]
+  const isMyTurn = currentPlayer?.id === myId
+  const canManageNow = isMyTurn && ['rolling', 'end_turn', 'buying'].includes(gameState.gamePhase)
+  const money = me?.money ?? 0
+  const houseCost = sq.houseCost ?? 0
+  const refund = Math.floor(houseCost / 2)
+  const unmortCost = Math.floor((sq.mortgageValue ?? 0) * 1.1)
+
+  const isBuildable = sq.type === 'property'
+  const groupIndices = sq.group ? (COLOR_GROUPS[sq.group] ?? []) : []
+  const ownsAll = isBuildable && groupIndices.length > 0 && groupIndices.every(i => gameState.properties[i]?.ownerId === myId)
+  const maxHouses = ownsAll ? Math.max(...groupIndices.map(i => gameState.properties[i].houses)) : 0
+  const hasBuildings = prop.houses > 0 || prop.hotel
+
+  // Build (house, or "Schulgebäude" once 4 houses are reached)
+  const isHotelBuild = prop.houses === 4 && !prop.hotel
+  const canBuildHouse = ownsAll && !prop.hotel && prop.houses < 4 && prop.houses <= maxHouses && !prop.isMortgaged && money >= houseCost && gameState.bankHouses > 0
+  const canBuildHotel = ownsAll && prop.houses === 4 && !prop.hotel && money >= houseCost && gameState.bankHotels > 0
+  const buildLabel = isHotelBuild ? '🏨 Schulgebäude' : '🏠 Haus bauen'
+  const canBuild = isHotelBuild ? canBuildHotel : canBuildHouse
+  const doBuild = () => getSocket().emit(isHotelBuild ? 'game:buy-hotel' : 'game:buy-house', { propertyIndex })
+
+  // Sell (one building)
+  const sellLabel = prop.hotel ? '🏨 Schulgebäude verkaufen' : '🏠 Haus verkaufen'
+  const doSell = () => {
+    const msg = prop.hotel
+      ? `Schulgebäude auf „${name}" für ${refund}€ verkaufen?`
+      : `Einen Klassenraum auf „${name}" für ${refund}€ verkaufen?`
+    if (window.confirm(msg)) getSocket().emit(prop.hotel ? 'game:sell-hotel' : 'game:sell-house', { propertyIndex })
+  }
+
+  // Mortgage (only without buildings) / un-mortgage
+  const mortLabel = prop.isMortgaged ? '🔓 Hypothek auflösen' : '🔒 Hypothek aufnehmen'
+  const canMort = prop.isMortgaged ? money >= unmortCost : !hasBuildings
+  const doMort = () => {
+    const msg = prop.isMortgaged
+      ? `Hypothek auf „${name}" für ${unmortCost}€ auflösen?`
+      : `Hypothek auf „${name}" aufnehmen und ${sq.mortgageValue}€ erhalten?`
+    if (window.confirm(msg)) getSocket().emit(prop.isMortgaged ? 'game:unmortgage' : 'game:mortgage', { propertyIndex })
+  }
+
+  return (
+    <div className={styles.ownerControls}>
+      {!canManageNow && <p className={styles.manageHint}>⏳ Verwalten nur in deinem Zug möglich.</p>}
+      {isBuildable && (
+        <div className={styles.manageRow}>
+          <button className={styles.mSell} disabled={!canManageNow || !(prop.houses > 0 || prop.hotel)} onClick={doSell}>
+            {sellLabel}
+          </button>
+          <button className={styles.mBuild} disabled={!canManageNow || !canBuild} onClick={doBuild}>
+            {buildLabel}
+          </button>
+        </div>
+      )}
+      <button className={styles.mMort} disabled={!canManageNow || !canMort} onClick={doMort}>
+        {mortLabel}
+      </button>
+    </div>
+  )
+}
+
 function PropertyModal({ data, myId, gameState, closeModal }: PropertyModalProps) {
   const propertyIndex = data.propertyIndex as number
   const canBuy = data.canBuy as boolean
@@ -162,6 +232,7 @@ function PropertyModal({ data, myId, gameState, closeModal }: PropertyModalProps
         {square.mortgageValue != null && (
           <p className={styles.smallText}>Hypothekenwert: {square.mortgageValue}€</p>
         )}
+        <OwnerControls propertyIndex={propertyIndex} gameState={gameState} myId={myId} />
         <button className={styles.btnClose} onClick={closeModal}>Schließen</button>
       </div>
     )

@@ -92,6 +92,43 @@
 
 .mortNote { color: #f0a0a0; }
 
+/* ── Owner controls inside the street info card ── */
+.ownerControls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0.5rem 0 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.manageHint {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.45);
+  text-align: center;
+  margin: 0;
+}
+
+.manageRow { display: flex; gap: 8px; }
+
+.ownerControls button {
+  flex: 1;
+  min-height: 46px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #fff;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: filter 0.15s, opacity 0.15s;
+}
+.ownerControls button:disabled { opacity: 0.4; cursor: not-allowed; }
+.ownerControls button:not(:disabled):hover { filter: brightness(1.15); }
+
+.mBuild { background: rgba(0,153,51,0.85); border-color: rgba(0,255,100,0.3); }
+.mSell { background: rgba(180,80,0,0.85); border-color: rgba(255,140,0,0.35); }
+.mMort { background: rgba(120,0,0,0.8); border-color: rgba(220,60,60,0.4); width: 100%; }
+
 .smallText {
   font-size: 0.8rem;
   color: rgba(255,255,255,0.4);
