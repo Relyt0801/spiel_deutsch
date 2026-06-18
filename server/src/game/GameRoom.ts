@@ -8,7 +8,7 @@ import {
   DEFAULT_SETTINGS,
 } from './GameEngine'
 import type { TradeOffer, DiceRoll, GameSettings, GamePhase } from './GameEngine'
-import { BOARD_SQUARES, COLOR_GROUPS, DOUBLE_IN_ROW_JAIL } from '../config/boardData'
+import { BOARD_SQUARES, COLOR_GROUPS, DOUBLE_IN_ROW_JAIL, RAILROAD_INDICES, UTILITY_INDICES } from '../config/boardData'
 import { logger } from '../utils/logger'
 
 export type LobbyPlayer = {
@@ -33,6 +33,8 @@ export class GameRoom {
   private turnTimer: NodeJS.Timeout | null = null
   private turnTimerPlayerId: string | null = null
   private tradeTimer: NodeJS.Timeout | null = null
+  private botAuctionVals: Record<string, number> = {}
+  private botAuctionPending: Set<string> = new Set()
 
   constructor(code: string, hostId: string, io: Server) {
     this.code = code
@@ -162,8 +164,7 @@ export class GameRoom {
           break
         }
         case 'buying': {
-          const sq = BOARD_SQUARES[current.position]
-          if (current.money >= (sq?.price ?? Infinity)) {
+          if (this.botShouldBuy(botId, current.position)) {
             this.handleBuyProperty(botId)
           } else {
             this.handleDeclineProperty(botId)
@@ -205,40 +206,147 @@ export class GameRoom {
     this.pendingBotTimers.add(timer)
   }
 
+  // ─── Bot decision helpers ────────────────────────────────────────────────
+
+  /** How much a player values OWNING a square — face price weighted by set/railroad synergy. */
+  private propertyStrategicValue(playerId: string, idx: number): number {
+    const sq = BOARD_SQUARES[idx]
+    if (!sq || !this.state) return 0
+    const base = sq.price ?? 0
+    if (sq.type === 'property' && sq.group) {
+      const group = COLOR_GROUPS[sq.group] ?? []
+      const owned = group.filter(i => this.state!.properties[i]?.ownerId === playerId).length
+      const byOther = group.filter(i => {
+        const o = this.state!.properties[i]?.ownerId
+        return o && o !== playerId
+      }).length
+      if (owned + 1 === group.length && byOther === 0) return base * 2.4 // completes the set
+      if (byOther === 0 && owned >= 1) return base * 1.5                  // building toward a set
+      if (byOther >= 1 && owned >= 1) return base * 1.1                   // contested
+      return base
+    }
+    if (sq.type === 'railroad') {
+      const rr = RAILROAD_INDICES.filter(i => this.state!.properties[i]?.ownerId === playerId).length
+      return base * (1 + rr * 0.35)
+    }
+    if (sq.type === 'utility') {
+      const ut = UTILITY_INDICES.filter(i => this.state!.properties[i]?.ownerId === playerId).length
+      return base * (0.85 + ut * 0.3)
+    }
+    return base
+  }
+
+  /** Spending appetite 0.4–1.3 based on cash on hand, plus a random mood. */
+  private botAggression(bot: Player): number {
+    const cash = bot.money
+    const base = cash > 1500 ? 1.05 : cash > 800 ? 0.9 : cash > 400 ? 0.7 : 0.5
+    return base * (0.82 + Math.random() * 0.42)
+  }
+
+  /** Property the bot owns that it can't realistically turn into a set (safe to trade away). */
+  private isSpareProperty(playerId: string, idx: number): boolean {
+    const sq = BOARD_SQUARES[idx]
+    if (!sq || sq.type !== 'property' || !sq.group || !this.state) return false
+    const group = COLOR_GROUPS[sq.group] ?? []
+    const byOther = group.filter(i => {
+      const o = this.state!.properties[i]?.ownerId
+      return o && o !== playerId
+    }).length
+    return byOther >= 1 // an opponent already blocks this set
+  }
+
+  private botShouldBuy(botId: string, idx: number): boolean {
+    if (!this.state) return false
+    const bot = this.state.players.find(p => p.id === botId)
+    const sq = BOARD_SQUARES[idx]
+    if (!bot || !sq) return false
+    const price = sq.price ?? 0
+    if (bot.money < price) return false
+
+    const reserveAfter = bot.money - price
+    const stratVal = this.propertyStrategicValue(botId, idx)
+    const important = stratVal >= price * 1.8 // completes / strongly helps a set
+    // Keep a cash cushion unless the street really matters.
+    if (reserveAfter < 80 && !important) return false
+    if (reserveAfter < 250 && !important && Math.random() < 0.5) return false
+    const willingness = stratVal * this.botAggression(bot)
+    return willingness >= price * (0.8 + Math.random() * 0.25)
+  }
+
+  /** Total worth of a bundle to the bot (cash at face + strategic value of streets). */
+  private bundleValue(botId: string, props: number[], money: number): number {
+    return money + props.reduce((s, i) => s + this.propertyStrategicValue(botId, i), 0)
+  }
+
   private findBotTradeOpportunity(botId: string): Omit<TradeOffer, 'id' | 'status' | 'confirmedBy'> | null {
     if (!this.state) return null
     const bot = this.state.players.find(p => p.id === botId)
     if (!bot) return null
 
-    for (const indices of Object.values(COLOR_GROUPS)) {
+    type Cand = Omit<TradeOffer, 'id' | 'status' | 'confirmedBy'> & { score: number }
+    const candidates: Cand[] = []
+
+    for (const [group, indices] of Object.entries(COLOR_GROUPS)) {
+      if (group === 'railroad' || group === 'utility') continue // focus on buildable colour sets
       const botOwns = indices.filter(i => this.state!.properties[i]?.ownerId === botId)
       if (botOwns.length === 0) continue
       const needed = indices.filter(i => {
         const owner = this.state!.properties[i]?.ownerId
         return owner && owner !== botId
       })
-      if (needed.length !== 1) continue
+      // Want to grab the 1–2 missing streets, and only if a SINGLE opponent holds them all.
+      if (needed.length === 0 || needed.length > 2) continue
+      const owners = new Set(needed.map(i => this.state!.properties[i]?.ownerId))
+      if (owners.size !== 1) continue
+      const targetOwnerId = [...owners][0]!
+      const target = this.state.players.find(p => p.id === targetOwnerId)
+      if (!target || target.isBankrupt || !target.isActive) continue
+      // None of the needed streets may carry buildings (can't be traded then).
+      if (needed.some(i => this.state!.properties[i]?.houses > 0 || this.state!.properties[i]?.hotel)) continue
 
-      const targetPropIdx = needed[0]
-      const targetOwnerId = this.state.properties[targetPropIdx]?.ownerId
-      if (!targetOwnerId) continue
-      const targetPlayer = this.state.players.find(p => p.id === targetOwnerId)
-      if (!targetPlayer || targetPlayer.isBankrupt) continue
+      const totalPrice = needed.reduce((s, i) => s + (BOARD_SQUARES[i]?.price ?? 0), 0)
+      // Situational pricing: pay more to rich/comfortable owners, squeeze cash-strapped ones.
+      let factor = 1.25 + Math.random() * 0.45
+      if (target.money < 300) factor -= 0.2
+      if (target.money > 1200) factor += 0.25
+      let offerMoney = Math.floor(totalPrice * factor)
 
-      const propPrice = BOARD_SQUARES[targetPropIdx]?.price ?? 100
-      const offerMoney = Math.floor(propPrice * 1.4)
-      if (bot.money - offerMoney < 200) continue
+      // Sometimes sweeten with a spare street so it isn't pure cash.
+      const offeredProps: number[] = []
+      const spare = bot.properties.find(i =>
+        this.isSpareProperty(botId, i) && !this.state!.properties[i]?.houses && !this.state!.properties[i]?.hotel)
+      if (spare !== undefined && Math.random() < 0.45) {
+        offeredProps.push(spare)
+        offerMoney = Math.max(0, offerMoney - Math.floor((BOARD_SQUARES[spare]?.price ?? 0) * 0.6))
+      }
 
-      return {
+      // Keep a safety reserve.
+      if (bot.money - offerMoney < 150) offerMoney = bot.money - 150
+      if (offerMoney < 0) continue
+
+      const score = needed.reduce((s, i) => s + this.propertyStrategicValue(botId, i), 0) - offerMoney * 0.3
+      candidates.push({
         fromPlayerId: botId,
         toPlayerId: targetOwnerId,
-        offeredProperties: [],
-        requestedProperties: [targetPropIdx],
+        offeredProperties: offeredProps,
+        requestedProperties: needed,
         offeredMoney: offerMoney,
         requestedMoney: 0,
-      }
+        score,
+      })
     }
-    return null
+
+    if (candidates.length === 0) return null
+    candidates.sort((a, b) => b.score - a.score)
+    const best = candidates[0]
+    return {
+      fromPlayerId: best.fromPlayerId,
+      toPlayerId: best.toPlayerId,
+      offeredProperties: best.offeredProperties,
+      requestedProperties: best.requestedProperties,
+      offeredMoney: best.offeredMoney,
+      requestedMoney: best.requestedMoney,
+    }
   }
 
   private scheduleBotTradeResponse(botId: string, tradeId: string): void {
@@ -253,29 +361,37 @@ export class GameRoom {
       const bot = this.state.players.find(p => p.id === botId)
       if (!bot) return
 
-      const getVal = (props: number[]) =>
-        props.reduce((sum, i) => sum + (BOARD_SQUARES[i]?.price ?? 0), 0)
-
       // Evaluate from the bot's perspective regardless of who currently "owns" the offer.
       const botIsFrom = trade.fromPlayerId === botId
-      const receives = botIsFrom
-        ? getVal(trade.requestedProperties) + trade.requestedMoney
-        : getVal(trade.offeredProperties) + trade.offeredMoney
-      const gives = botIsFrom
-        ? getVal(trade.offeredProperties) + trade.offeredMoney
-        : getVal(trade.requestedProperties) + trade.requestedMoney
+      const getProps = botIsFrom
+        ? { recv: trade.requestedProperties, give: trade.offeredProperties }
+        : { recv: trade.offeredProperties, give: trade.requestedProperties }
+      const recvMoney = botIsFrom ? trade.requestedMoney : trade.offeredMoney
+      const giveMoney = botIsFrom ? trade.offeredMoney : trade.requestedMoney
 
-      if (receives >= gives * 0.92) {
+      const receives = this.bundleValue(botId, getProps.recv, recvMoney)
+      const gives = this.bundleValue(botId, getProps.give, giveMoney)
+      const cashOut = giveMoney - recvMoney
+
+      // Random mood + situational: a cash-strapped bot is keener on deals that bring money in.
+      let threshold = 0.9 + (Math.random() - 0.5) * 0.16 // ~0.82–0.98
+      if (bot.money < 300 && cashOut < 0) threshold -= 0.12
+      if (bot.money > 1400) threshold += 0.06
+      const reserveOk = bot.money - cashOut >= 120
+      const ratio = receives / Math.max(1, gives)
+
+      if (ratio >= threshold && reserveOk) {
         this.handleConfirmTrade(botId, tradeId)
-      } else if (!botIsFrom && receives >= gives * 0.65 && bot.money > gives + 150) {
-        const extraMoney = Math.floor((gives - receives) * 0.8)
-        // Counter from the bot's perspective: it gives what was requested of it (+ money),
-        // and asks for what was offered plus a little extra cash.
+      } else if (!botIsFrom && ratio >= 0.55 && reserveOk) {
+        // Counter: keep the streets on the table but rebalance with cash to roughly fair + a margin.
+        const gap = gives - receives
+        const askExtra = Math.max(0, Math.floor(gap * (0.7 + Math.random() * 0.4)))
+        const canAfford = bot.money - (trade.requestedMoney) >= 120
         this.handleCounterTrade(botId, {
           offeredProperties: trade.requestedProperties,
           requestedProperties: trade.offeredProperties,
-          offeredMoney: trade.requestedMoney,
-          requestedMoney: trade.offeredMoney + extraMoney,
+          offeredMoney: canAfford ? trade.requestedMoney : 0,
+          requestedMoney: trade.offeredMoney + askExtra,
         })
       } else {
         this.handleRejectTrade(botId, tradeId)
@@ -284,18 +400,52 @@ export class GameRoom {
     this.pendingBotTimers.add(timer)
   }
 
-  private scheduleBotAuctionBid(botId: string, botMoney: number, propertyPrice: number): void {
-    const delay = 1500 + Math.random() * 1500
+  /** Each bot privately values the property up to a cap, then they bid each other up. */
+  private startBotAuctionBidding(): void {
+    if (!this.state?.auction) return
+    this.botAuctionVals = {}
+    this.botAuctionPending.clear()
+    const idx = this.state.auction.propertyIndex
+    for (const p of this.state.players) {
+      if (!p.isBot || !p.isActive || p.isBankrupt) continue
+      const strat = this.propertyStrategicValue(p.id, idx)
+      // Auctions are bargains: bots pay 45–90% of strategic value, capped to keep a reserve.
+      let val = strat * this.botAggression(p) * (0.5 + Math.random() * 0.35)
+      val = Math.min(val, p.money - 120)
+      this.botAuctionVals[p.id] = Math.max(0, Math.floor(val))
+    }
+    this.scheduleBotAuctionRound(null)
+  }
+
+  private scheduleBotAuctionRound(exceptBotId: string | null): void {
+    if (!this.state?.auction) return
+    for (const p of this.state.players) {
+      if (!p.isBot || !p.isActive || p.isBankrupt) continue
+      if (p.id === exceptBotId) continue
+      if (this.state.auction.passedPlayers.includes(p.id)) continue
+      if (this.state.auction.highestBidderId === p.id) continue
+      this.scheduleBotAuctionEval(p.id)
+    }
+  }
+
+  private scheduleBotAuctionEval(botId: string): void {
+    if (this.botAuctionPending.has(botId)) return
+    this.botAuctionPending.add(botId)
+    const delay = 700 + Math.random() * 1500
     const timer = setTimeout(() => {
       this.pendingBotTimers.delete(timer)
+      this.botAuctionPending.delete(botId)
       if (!this.state?.auction) return
       const bot = this.state.players.find(p => p.id === botId)
-      if (!bot || bot.isBankrupt) return
+      if (!bot || bot.isBankrupt || !bot.isActive) return
       const auction = this.state.auction
-      if (auction.passedPlayers.includes(botId)) return
-      const maxBid = Math.min(Math.floor(propertyPrice * 0.75), bot.money - 200)
-      if (bot.money > auction.highestBid + 10 && auction.highestBid < maxBid) {
-        this.handleAuctionBid(botId, auction.highestBid + 10)
+      if (auction.passedPlayers.includes(botId) || auction.highestBidderId === botId) return
+      const val = this.botAuctionVals[botId] ?? 0
+      const price = BOARD_SQUARES[auction.propertyIndex]?.price ?? 100
+      const increment = Math.max(10, Math.round(price * 0.05 / 5) * 5)
+      const nextBid = auction.highestBid + increment
+      if (nextBid <= val && bot.money >= nextBid) {
+        this.handleAuctionBid(botId, nextBid) // triggers the next round for the others
       } else {
         this.handleAuctionPass(botId)
       }
@@ -394,16 +544,11 @@ export class GameRoom {
     const currentPlayer = this.state.players[this.state.currentPlayerIndex]
     if (currentPlayer.id !== socketId || this.state.gamePhase !== 'buying') return
     const propertyIndex = currentPlayer.position
-    const sq = BOARD_SQUARES[propertyIndex]
     this.state = startAuction(this.state, propertyIndex)
     this.startAuctionTimer()
     this.broadcast('auction:started', { auction: this.state.auction, gameState: this.state })
     this.broadcastState()
-    for (const player of this.state.players) {
-      if (player.isBot && !player.isBankrupt && player.isActive) {
-        this.scheduleBotAuctionBid(player.id, player.money, sq?.price ?? 100)
-      }
-    }
+    this.startBotAuctionBidding()
   }
 
   // ─── Time-limit timers (optional modifier) ───────────────────────────────
@@ -505,8 +650,12 @@ export class GameRoom {
         this.state.auction.timeRemaining = 10
         this.broadcast('auction:tick', { timeRemaining: 10 })
       }
+      this.broadcast('auction:bid-placed', { playerId: socketId, amount, auction: this.state.auction })
+      // Let the other bots react to the new highest bid.
+      this.scheduleBotAuctionRound(socketId)
+    } else {
+      this.broadcast('auction:bid-placed', { playerId: socketId, amount, auction: this.state.auction })
     }
-    this.broadcast('auction:bid-placed', { playerId: socketId, amount, auction: this.state.auction })
   }
 
   handleAuctionPass(socketId: string): void {
@@ -698,12 +847,7 @@ export class GameRoom {
     this.startAuctionTimer()
     this.broadcast('auction:started', { auction: this.state.auction, gameState: this.state })
     this.broadcastState()
-    const sq = BOARD_SQUARES[next]
-    for (const player of this.state.players) {
-      if (player.isBot && !player.isBankrupt && player.isActive) {
-        this.scheduleBotAuctionBid(player.id, player.money, sq?.price ?? 100)
-      }
-    }
+    this.startBotAuctionBidding()
   }
 
   handleJailAction(socketId: string, action: 'pay' | 'card' | 'roll'): void {
