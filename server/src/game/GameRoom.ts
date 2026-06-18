@@ -35,6 +35,7 @@ export class GameRoom {
   private tradeTimer: NodeJS.Timeout | null = null
   private botAuctionVals: Record<string, number> = {}
   private botAuctionPending: Set<string> = new Set()
+  private tradeCounterRounds = 0
 
   constructor(code: string, hostId: string, io: Server) {
     this.code = code
@@ -278,6 +279,50 @@ export class GameRoom {
     return money + props.reduce((s, i) => s + this.propertyStrategicValue(botId, i), 0)
   }
 
+  /**
+   * Build a flexible counter-offer for `botId` (the receiver of `trade`):
+   * keeps streets it really wants, drops the ones it won't give, may add a spare
+   * street, and balances the rest with cash. Terms are from the bot's perspective.
+   */
+  private buildBotCounter(botId: string, trade: TradeOffer):
+    { offeredProperties: number[]; requestedProperties: number[]; offeredMoney: number; requestedMoney: number } {
+    const bot = this.state!.players.find(p => p.id === botId)!
+    const human = this.state!.players.find(p => p.id === trade.fromPlayerId)
+    const humanMoney = human?.money ?? 0
+    const face = (arr: number[]) => arr.reduce((s, i) => s + (BOARD_SQUARES[i]?.price ?? 0), 0)
+    const tradeable = (i: number) => {
+      const p = this.state!.properties[i]
+      return p && !p.houses && !p.hotel && !p.isMortgaged
+    }
+
+    const wants: number[] = trade.offeredProperties // streets the bot would receive
+    // Refuse to hand over streets the bot strongly values (its own set-builders).
+    const give = trade.requestedProperties.filter(i => {
+      const sv = this.propertyStrategicValue(botId, i)
+      return !(sv >= (BOARD_SQUARES[i]?.price ?? 0) * 1.5)
+    })
+
+    // If the bot is now getting much more in streets than it gives, sweeten with a spare + cash.
+    let streetGap = face(wants) - face(give) // >0 → bot getting more streets
+    if (streetGap > 180 && Math.random() < 0.6) {
+      const spare = bot.properties.find(i =>
+        this.isSpareProperty(botId, i) && !give.includes(i) && !wants.includes(i) && tradeable(i))
+      if (spare !== undefined) { give.push(spare); streetGap = face(wants) - face(give) }
+    }
+
+    let offeredMoney = 0
+    let requestedMoney = 0
+    if (streetGap > 0) {
+      // Getting more streets → offer some cash to make it attractive.
+      offeredMoney = Math.max(0, Math.min(bot.money - 150, Math.floor(streetGap * (0.55 + Math.random() * 0.35))))
+    } else {
+      // Giving more streets → ask for cash, but never more than the human has.
+      requestedMoney = Math.max(0, Math.min(humanMoney, Math.floor(-streetGap * (0.55 + Math.random() * 0.35))))
+    }
+
+    return { offeredProperties: give, requestedProperties: wants, offeredMoney, requestedMoney }
+  }
+
   private findBotTradeOpportunity(botId: string): Omit<TradeOffer, 'id' | 'status' | 'confirmedBy'> | null {
     if (!this.state) return null
     const bot = this.state.players.find(p => p.id === botId)
@@ -380,19 +425,35 @@ export class GameRoom {
       const reserveOk = bot.money - cashOut >= 120
       const ratio = receives / Math.max(1, gives)
 
+      // Counters only make sense for the side that received an offer, and we cap the
+      // ping-pong so two bots can't haggle forever.
+      const canCounter = !botIsFrom && this.tradeCounterRounds < 5
+
       if (ratio >= threshold && reserveOk) {
         this.handleConfirmTrade(botId, tradeId)
-      } else if (!botIsFrom && ratio >= 0.55 && reserveOk) {
-        // Counter: keep the streets on the table but rebalance with cash to roughly fair + a margin.
-        const gap = gives - receives
-        const askExtra = Math.max(0, Math.floor(gap * (0.7 + Math.random() * 0.4)))
-        const canAfford = bot.money - (trade.requestedMoney) >= 120
-        this.handleCounterTrade(botId, {
-          offeredProperties: trade.requestedProperties,
-          requestedProperties: trade.offeredProperties,
-          offeredMoney: canAfford ? trade.requestedMoney : 0,
-          requestedMoney: trade.offeredMoney + askExtra,
-        })
+      } else if (canCounter && ratio >= 0.2) {
+        // Not completely off → make a flexible counter rather than flatly rejecting.
+        const c = this.buildBotCounter(botId, trade)
+        const counterReserveOk = bot.money - (c.offeredMoney - c.requestedMoney) >= 100
+        const changed =
+          c.offeredMoney !== giveMoney || c.requestedMoney !== recvMoney ||
+          c.offeredProperties.length !== getProps.give.length ||
+          c.requestedProperties.length !== getProps.recv.length
+        if (counterReserveOk && changed) {
+          this.handleCounterTrade(botId, c)
+        } else {
+          // Fallback: keep streets, just rebalance with cash.
+          const askExtra = Math.max(0, Math.floor((gives - receives) * (0.7 + Math.random() * 0.4)))
+          this.handleCounterTrade(botId, {
+            offeredProperties: trade.requestedProperties,
+            requestedProperties: trade.offeredProperties,
+            offeredMoney: 0,
+            requestedMoney: trade.offeredMoney + askExtra,
+          })
+        }
+      } else if (reserveOk && ratio >= threshold * 0.97) {
+        // Borderline and can't counter (e.g. round cap reached) → take the deal.
+        this.handleConfirmTrade(botId, tradeId)
       } else {
         this.handleRejectTrade(botId, tradeId)
       }
@@ -747,6 +808,7 @@ export class GameRoom {
   handleProposeTrade(socketId: string, offer: Omit<TradeOffer, 'id' | 'status' | 'confirmedBy'>): void {
     if (!this.state) return
     this.state = proposeTrade(this.state, offer)
+    this.tradeCounterRounds = 0
     this.broadcast('trade:proposed', { trade: this.state.activeTrade })
     this.broadcastState()
     this.startTradeTimer()
@@ -761,6 +823,7 @@ export class GameRoom {
     const trade = this.state.activeTrade
     if (trade.toPlayerId !== socketId && trade.fromPlayerId !== socketId) return
     this.state = counterTrade(this.state, socketId, terms)
+    this.tradeCounterRounds += 1
     this.broadcast('trade:countered', { trade: this.state.activeTrade })
     this.broadcastState()
     this.startTradeTimer()
