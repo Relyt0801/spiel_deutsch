@@ -5,7 +5,6 @@ import { useUiStore } from '../../../store/uiStore'
 import { getSocket } from '../../../socket/socketClient'
 import { PLAYER_COLORS } from '../../../types/game'
 import { BOARD_SQUARES } from '../../../config/boardData'
-import { BuildingPanel } from './BuildingPanel'
 import { MyPropertiesPanel } from './MyPropertiesPanel'
 import styles from './HUD.module.css'
 
@@ -136,8 +135,6 @@ export function HUD() {
             </div>
           )}
 
-          <BuildingPanel gameState={gameState} myId={myId} />
-
           {buyPending && (
             <button className={styles.btnRoll} onClick={reopenBuy}>
               🏠 Kaufentscheidung
@@ -170,13 +167,6 @@ export function HUD() {
             </button>
           )}
 
-          {canDeclareBankruptcy && (
-            <button className={styles.btnBankrupt}
-              onClick={() => { if (confirm('Wirklich Bankrott erklären?')) getSocket().emit('game:declare-bankruptcy') }}>
-              💸 Bankrott erklären
-            </button>
-          )}
-
           {(isAnimating || diceAnimating) && (
             <div className={styles.animating}>⏳ Animiert...</div>
           )}
@@ -187,6 +177,12 @@ export function HUD() {
       {myPlayer && (
         <div className={styles.myPropertiesWrapper}>
           <MyPropertiesPanel gameState={gameState} myId={myId} />
+          {canDeclareBankruptcy && (
+            <button className={styles.btnBankruptLeft}
+              onClick={() => { if (confirm('Wirklich Bankrott erklären?')) getSocket().emit('game:declare-bankruptcy') }}>
+              💸 Bankrott erklären
+            </button>
+          )}
         </div>
       )}
 

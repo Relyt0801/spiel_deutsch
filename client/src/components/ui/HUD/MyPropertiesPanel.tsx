@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { BOARD_SQUARES, PROPERTY_COLOR_HEX } from '../../../config/boardData'
 import type { GameState, PropertyState } from '../../../types/game'
 import { PLAYER_COLORS } from '../../../types/game'
+import { useUiStore } from '../../../store/uiStore'
 import styles from './MyPropertiesPanel.module.css'
 
 interface Props {
@@ -105,9 +106,11 @@ export function MyPropertiesPanel({ gameState, myId }: Props) {
               {myProperties.map(p => {
                 const { icon, value } = infoFor(p, p.square, groupCounts[p.square.group ?? ''] ?? 1)
                 return (
-                  <div
+                  <button
                     key={p.boardIndex}
                     className={`${styles.row} ${p.isMortgaged ? styles.mortgaged : ''}`}
+                    title="Straßenmenü öffnen"
+                    onClick={() => useUiStore.getState().openModal('property', { propertyIndex: p.boardIndex, infoOnly: true })}
                   >
                     <div
                       className={styles.colorDot}
@@ -128,7 +131,7 @@ export function MyPropertiesPanel({ gameState, myId }: Props) {
                         <span className={styles.value}>{value}</span>
                       </span>
                     )}
-                  </div>
+                  </button>
                 )
               })}
             </div>

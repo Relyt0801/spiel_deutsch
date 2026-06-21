@@ -4,6 +4,7 @@ import { useGameStore } from '../../../store/gameStore'
 import { useSocketStore } from '../../../store/socketStore'
 import { getSocket } from '../../../socket/socketClient'
 import { BOARD_SQUARES, PROPERTY_COLOR_HEX, COLOR_GROUPS } from '../../../config/boardData'
+import { EVENT_TITLES } from '../../../config/events'
 import { PLAYER_COLORS } from '../../../types/game'
 import type { GameState, TradeOffer } from '../../../types/game'
 import styles from './Modals.module.css'
@@ -319,11 +320,14 @@ function CardModal({ data, closeModal }: CardModalProps) {
     }
   }, [isMyTurn, closeModal])
 
+  const title = EVENT_TITLES[card.id]
+
   return (
     <div className={styles.cardModal}>
       <div className={styles.cardHeader} style={{ background: isChance ? '#d97706' : '#2563eb' }}>
         {isChance ? '❓ Stundenplanwechsel' : '📋 Klassenbuch'}
       </div>
+      {title && <div className={styles.cardTitle}>{title}</div>}
       <div className={styles.cardText}>{card.text}</div>
       {isMyTurn ? (
         <button className={styles.btnClose} onClick={() => {

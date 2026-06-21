@@ -205,6 +205,14 @@
   text-transform: uppercase;
   letter-spacing: 1px;
 }
+.cardTitle {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 0.5rem;
+  text-align: center;
+}
+
 .cardText {
   font-size: 1.05rem;
   color: white;

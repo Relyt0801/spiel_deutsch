@@ -266,12 +266,19 @@ export class GameRoom {
 
     const reserveAfter = bot.money - price
     const stratVal = this.propertyStrategicValue(botId, idx)
-    const important = stratVal >= price * 1.8 // completes / strongly helps a set
-    // Keep a cash cushion unless the street really matters.
-    if (reserveAfter < 80 && !important) return false
-    if (reserveAfter < 250 && !important && Math.random() < 0.5) return false
-    const willingness = stratVal * this.botAggression(bot)
-    return willingness >= price * (0.8 + Math.random() * 0.25)
+    const important = stratVal >= price * 1.4 // completes / strongly helps a set
+    // Land grab: the fewer streets the bot has, the keener it is to buy (esp. early).
+    const owned = bot.properties.length
+    const eager = owned < 4 ? 1.4 : owned < 8 ? 1.2 : 1.0
+
+    // Only a thin cash cushion blocks a buy; important streets ignore the cushion.
+    if (reserveAfter < 0) return false
+    if (reserveAfter < 60 && !important) return false
+    if (reserveAfter < 200 && !important && Math.random() < 0.25) return false
+
+    const willingness = stratVal * this.botAggression(bot) * eager
+    // Low threshold → unowned streets are usually bought when affordable.
+    return willingness >= price * (0.55 + Math.random() * 0.22)
   }
 
   /** Total worth of a bundle to the bot (cash at face + strategic value of streets). */
@@ -469,10 +476,13 @@ export class GameRoom {
     const idx = this.state.auction.propertyIndex
     for (const p of this.state.players) {
       if (!p.isBot || !p.isActive || p.isBankrupt) continue
+      // propertyStrategicValue already boosts streets whose colour the bot owns / can complete.
       const strat = this.propertyStrategicValue(p.id, idx)
-      // Auctions are bargains: bots pay 45–90% of strategic value, capped to keep a reserve.
-      let val = strat * this.botAggression(p) * (0.5 + Math.random() * 0.35)
-      val = Math.min(val, p.money - 120)
+      const owned = p.properties.length
+      const eager = owned < 4 ? 1.25 : owned < 8 ? 1.1 : 1.0
+      // Bots pay 60–100% of (boosted) strategic value, capped to keep a small reserve.
+      let val = strat * this.botAggression(p) * eager * (0.6 + Math.random() * 0.4)
+      val = Math.min(val, p.money - 100)
       this.botAuctionVals[p.id] = Math.max(0, Math.floor(val))
     }
     this.scheduleBotAuctionRound(null)
@@ -530,13 +540,20 @@ export class GameRoom {
       players: this.state.players.map((p, i) => i === cpIdx ? { ...p, doublesCount: newDoubles } : p),
     }
 
-    // Third double in a row → straight to the Nachsitz-Zimmer, no movement.
+    // Third double in a row → straight to the Nachsitz-Zimmer, but only AFTER the
+    // dice animation has played (otherwise the jail jump spoils the roll).
     if (roll.isDouble && newDoubles >= DOUBLE_IN_ROW_JAIL) {
-      this.state = { ...this.state, currentDiceRoll: roll }
+      this.state = { ...this.state, currentDiceRoll: roll, gamePhase: 'moving' }
       this.broadcast('game:dice-rolled', { playerId: socketId, roll, gameState: this.state })
-      this.state = sendToJail(this.state, socketId)
-      this.broadcast('game:go-to-jail', { playerId: socketId, gameState: this.state })
       this.broadcastState()
+      const t = setTimeout(() => {
+        this.pendingBotTimers.delete(t)
+        if (!this.state) return
+        this.state = sendToJail(this.state, socketId)
+        this.broadcast('game:go-to-jail', { playerId: socketId, gameState: this.state })
+        this.broadcastState()
+      }, 2200)
+      this.pendingBotTimers.add(t)
       return
     }
 
@@ -934,28 +951,39 @@ export class GameRoom {
       this.state.gamePhase = 'rolling'
     } else if (action === 'roll') {
       const roll = rollDice()
+      const JAIL_MAX = 3
       if (roll.isDouble) {
+        // Freed by Pasch → move (startMovement shows the dice + animates). No bonus roll.
         this.state.players = this.state.players.map((p, i) =>
           i === pIdx ? { ...p, jailTurns: 0, doublesCount: 0 } : p
         )
-        // Freed by Pasch: actually move the piece. Clear the double flag so the
-        // end-of-turn logic does NOT grant a bonus roll for leaving jail.
         this.startMovement(socketId, { ...roll, isDouble: false }, player.position)
         return
-      } else {
-        const newJailTurns = player.jailTurns + 1
-        if (newJailTurns > 3) {
-          this.state.players = this.state.players.map((p, i) =>
-            i === pIdx ? { ...p, money: p.money - 50, jailTurns: 0 } : p
-          )
-          this.state.gamePhase = 'rolling'
-        } else {
-          this.state.players = this.state.players.map((p, i) =>
-            i === pIdx ? { ...p, jailTurns: newJailTurns } : p
-          )
-          this.state = advanceTurn(this.state)
-        }
       }
+      if (player.jailTurns >= JAIL_MAX) {
+        // Used up all 3 attempts → must pay the 50€ fine, then move the rolled amount.
+        this.state.players = this.state.players.map((p, i) =>
+          i === pIdx ? { ...p, money: p.money - 50, jailTurns: 0, doublesCount: 0 } : p
+        )
+        this.startMovement(socketId, { ...roll, isDouble: false }, player.position)
+        return
+      }
+      // Failed attempt but chances remain: SHOW the dice, then stay locked up and
+      // hand the turn on (no movement — the player does NOT leave jail).
+      this.state = { ...this.state, currentDiceRoll: roll, gamePhase: 'moving' }
+      this.state.players = this.state.players.map((p, i) =>
+        i === pIdx ? { ...p, jailTurns: player.jailTurns + 1 } : p
+      )
+      this.broadcast('game:dice-rolled', { playerId: socketId, roll, gameState: this.state })
+      this.broadcastState()
+      const t = setTimeout(() => {
+        this.pendingBotTimers.delete(t)
+        if (!this.state) return
+        this.state = advanceTurn(this.state)
+        this.broadcastState()
+      }, 2200)
+      this.pendingBotTimers.add(t)
+      return
     }
     this.broadcastState()
   }
