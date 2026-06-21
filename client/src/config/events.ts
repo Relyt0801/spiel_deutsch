@@ -12,19 +12,78 @@
 
 export type EventDeck = 'chance' | 'community'
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FUNKTIONEN (action) – so baust du neue Karten
+//
+// Jede Karte braucht: id, deck, title, content, action.
+// Je nach action kommen bestimmte Zusatz-Felder dazu:
+//
+//  'ADVANCE_TO_GO'
+//      Spieler geht direkt zu Schulbeginn (Feld 0) und erhält 200€.
+//      Zusatzfelder: keine.
+//
+//  'ADVANCE_TO'         (braucht: target)
+//      Spieler rückt zum Feld `target` (0–39) vor. Wird dabei Schulbeginn
+//      überquert, gibt es 200€. Auf dem Zielfeld wird normal gelandet
+//      (Miete/Kaufen). Beispiel: target: 20 = Freistunde.
+//
+//  'ADVANCE_TO_RAILROAD'  (optional: nearest, doubleRent)
+//      Spieler rückt zum nächsten Schulbus (Bahnhof) vor.
+//      nearest: true   → nimm den nächstgelegenen.
+//      doubleRent: true→ zahlt dort die doppelte Miete.
+//
+//  'ADVANCE_TO_UTILITY'   (optional: nearest, doubleRent)
+//      Wie oben, aber zum nächsten Werk (Makerspace / Schultoilette).
+//
+//  'MOVE_BACK'          (braucht: amount)
+//      Spieler geht `amount` Felder zurück und landet dort normal.
+//      Beispiel: amount: 3 = drei Felder zurück.
+//
+//  'COLLECT'            (braucht: amount)
+//      Spieler erhält `amount` € von der Bank.
+//
+//  'PAY'                (braucht: amount)
+//      Spieler zahlt `amount` € an die Bank.
+//
+//  'COLLECT_FROM_PLAYERS' (braucht: amount)
+//      JEDER Mitspieler zahlt `amount` € an den Spieler.
+//
+//  'PAY_PLAYERS'        (braucht: amount)
+//      Spieler zahlt `amount` € an JEDEN Mitspieler.
+//
+//  'GO_TO_JAIL'
+//      Spieler kommt direkt in den Bildungsbunker (Gefängnis), ohne 200€.
+//      Zusatzfelder: keine.
+//
+//  'GET_OUT_OF_JAIL_FREE'
+//      Spieler erhält eine Befreiungskarte (zum Aufbewahren).
+//      Zusatzfelder: keine.
+//
+//  'BUILDING_REPAIRS'   (braucht: house, hotel)
+//      Spieler zahlt pro Klassenraum `house` € und pro Schulgebäude `hotel` €.
+//      Beispiel: house: 25, hotel: 100.
+//
+// Felder-Übersicht (Zusatzparameter):
+//   target  : Zielfeld 0–39          (nur ADVANCE_TO)
+//   amount  : Geldbetrag oder Felder  (COLLECT/PAY/.../MOVE_BACK)
+//   house   : € pro Klassenraum       (nur BUILDING_REPAIRS)
+//   hotel   : € pro Schulgebäude      (nur BUILDING_REPAIRS)
+//   nearest : nächstgelegenes Feld    (ADVANCE_TO_RAILROAD/UTILITY)
+//   doubleRent : doppelte Miete       (ADVANCE_TO_RAILROAD/UTILITY)
+// ─────────────────────────────────────────────────────────────────────────────
 export type EventAction =
-  | 'ADVANCE_TO_GO'
-  | 'ADVANCE_TO'
-  | 'ADVANCE_TO_RAILROAD'
-  | 'ADVANCE_TO_UTILITY'
-  | 'MOVE_BACK'
-  | 'COLLECT'
-  | 'PAY'
-  | 'COLLECT_FROM_PLAYERS'
-  | 'PAY_PLAYERS'
-  | 'GO_TO_JAIL'
-  | 'GET_OUT_OF_JAIL_FREE'
-  | 'BUILDING_REPAIRS'
+  | 'ADVANCE_TO_GO'          // → Schulbeginn + 200€
+  | 'ADVANCE_TO'             // → Feld `target` (überquert Los = +200€)
+  | 'ADVANCE_TO_RAILROAD'    // → nächster Schulbus (optional doppelte Miete)
+  | 'ADVANCE_TO_UTILITY'     // → nächstes Werk (optional doppelte Miete)
+  | 'MOVE_BACK'              // ← `amount` Felder zurück
+  | 'COLLECT'                // + `amount` € von der Bank
+  | 'PAY'                    // − `amount` € an die Bank
+  | 'COLLECT_FROM_PLAYERS'   // + `amount` € von jedem Mitspieler
+  | 'PAY_PLAYERS'            // − `amount` € an jeden Mitspieler
+  | 'GO_TO_JAIL'             // → Bildungsbunker (ohne 200€)
+  | 'GET_OUT_OF_JAIL_FREE'   // + Befreiungskarte
+  | 'BUILDING_REPAIRS'       // − `house` €/Klassenraum, `hotel` €/Schulgebäude
 
 export interface EventCard {
   id: string

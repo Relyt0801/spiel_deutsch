@@ -424,21 +424,21 @@ export class GameRoom {
       const receives = this.bundleValue(botId, getProps.recv, recvMoney)
       const gives = this.bundleValue(botId, getProps.give, giveMoney)
       const cashOut = giveMoney - recvMoney
-
-      // Random mood + situational: a cash-strapped bot is keener on deals that bring money in.
-      let threshold = 0.9 + (Math.random() - 0.5) * 0.16 // ~0.82–0.98
-      if (bot.money < 300 && cashOut < 0) threshold -= 0.12
-      if (bot.money > 1400) threshold += 0.06
-      const reserveOk = bot.money - cashOut >= 120
       const ratio = receives / Math.max(1, gives)
 
-      // Counters only make sense for the side that received an offer, and we cap the
-      // ping-pong so two bots can't haggle forever.
+      // Hard guards — a bot must never lose value or bleed cash for nothing.
+      const losesCashForNothing = cashOut > 0 && getProps.recv.length === 0
+      const reserveOk = bot.money - Math.max(0, cashOut) >= 120
+      // Accept only when the total value coming back is fair-or-better (small random margin).
+      // (Set-completing streets are already valued ~2.4× by bundleValue, so the bot will
+      //  still pay a premium for them — but it won't accept a plain money loss.)
+      const fair = receives >= gives * (0.98 + Math.random() * 0.06)
+
       const canCounter = !botIsFrom && this.tradeCounterRounds < 5
 
-      if (ratio >= threshold && reserveOk) {
+      if (fair && reserveOk && !losesCashForNothing) {
         this.handleConfirmTrade(botId, tradeId)
-      } else if (canCounter && ratio >= 0.2) {
+      } else if (canCounter && ratio >= 0.15 && !losesCashForNothing) {
         // Not completely off → make a flexible counter rather than flatly rejecting.
         const c = this.buildBotCounter(botId, trade)
         const counterReserveOk = bot.money - (c.offeredMoney - c.requestedMoney) >= 100
@@ -449,8 +449,8 @@ export class GameRoom {
         if (counterReserveOk && changed) {
           this.handleCounterTrade(botId, c)
         } else {
-          // Fallback: keep streets, just rebalance with cash.
-          const askExtra = Math.max(0, Math.floor((gives - receives) * (0.7 + Math.random() * 0.4)))
+          // Fallback: keep streets, just rebalance with cash so the bot ends up fair.
+          const askExtra = Math.max(0, Math.floor((gives - receives) * (0.8 + Math.random() * 0.4)))
           this.handleCounterTrade(botId, {
             offeredProperties: trade.requestedProperties,
             requestedProperties: trade.offeredProperties,
@@ -458,9 +458,6 @@ export class GameRoom {
             requestedMoney: trade.offeredMoney + askExtra,
           })
         }
-      } else if (reserveOk && ratio >= threshold * 0.97) {
-        // Borderline and can't counter (e.g. round cap reached) → take the deal.
-        this.handleConfirmTrade(botId, tradeId)
       } else {
         this.handleRejectTrade(botId, tradeId)
       }
@@ -479,10 +476,12 @@ export class GameRoom {
       // propertyStrategicValue already boosts streets whose colour the bot owns / can complete.
       const strat = this.propertyStrategicValue(p.id, idx)
       const owned = p.properties.length
-      const eager = owned < 4 ? 1.25 : owned < 8 ? 1.1 : 1.0
-      // Bots pay 60–100% of (boosted) strategic value, capped to keep a small reserve.
-      let val = strat * this.botAggression(p) * eager * (0.6 + Math.random() * 0.4)
-      val = Math.min(val, p.money - 100)
+      const eager = owned < 4 ? 1.15 : owned < 8 ? 1.05 : 1.0
+      // Bots bid up to 75–125% of the (boosted) value, so streets can't be sniped cheaply.
+      // Cash-strapped bots hold back a bit; comfortable bots bid full value.
+      const cashFactor = p.money > 800 ? 1.0 : p.money > 400 ? 0.85 : 0.6
+      let val = strat * (0.75 + Math.random() * 0.5) * eager * cashFactor
+      val = Math.min(val, p.money - 80)
       this.botAuctionVals[p.id] = Math.max(0, Math.floor(val))
     }
     this.scheduleBotAuctionRound(null)

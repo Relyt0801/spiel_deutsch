@@ -32,10 +32,12 @@ interface UiStore {
   diceAnimating: boolean
   selectedPropertyIndex: number | null
   errorMessage: string | null
+  notice: string | null
   turnTimeRemaining: number | null
   tradeTimeRemaining: number | null
 
   setAppPhase: (p: UiStore['appPhase']) => void
+  setNotice: (msg: string | null) => void
   openModal: (modal: ModalType, data?: unknown) => void
   closeModal: () => void
   setCameraTarget: (idx: number | null) => void
@@ -56,10 +58,12 @@ export const useUiStore = create<UiStore>((set) => ({
   diceAnimating: false,
   selectedPropertyIndex: null,
   errorMessage: null,
+  notice: null,
   turnTimeRemaining: null,
   tradeTimeRemaining: null,
 
   setAppPhase: (p) => set({ appPhase: p }),
+  setNotice: (msg) => set({ notice: msg }),
   openModal: (modal, data = null) => set({ activeModal: modal, modalData: data as UiStore['modalData'] }),
   closeModal: () => set({ activeModal: null, modalData: null }),
   setCameraTarget: (idx) => set({ cameraTarget: idx }),

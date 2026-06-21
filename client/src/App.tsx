@@ -5,6 +5,37 @@ import { Board2D } from './components/board/Board2D'
 import { HUD } from './components/ui/HUD/HUD'
 import { Modals } from './components/ui/Modals/Modals'
 
+function NoticeBanner() {
+  const notice = useUiStore(s => s.notice)
+  if (!notice) return null
+  return (
+    <div
+      onClick={() => useUiStore.getState().setNotice(null)}
+      style={{
+        position: 'fixed',
+        top: 'max(10px, env(safe-area-inset-top))',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 300,
+        maxWidth: '92vw',
+        background: 'linear-gradient(180deg, rgba(20,40,80,0.96), rgba(10,25,55,0.96))',
+        border: '1px solid rgba(120,180,255,0.5)',
+        color: '#eaf2ff',
+        padding: '0.55rem 1rem',
+        borderRadius: 12,
+        fontSize: '0.9rem',
+        fontWeight: 600,
+        boxShadow: '0 8px 30px rgba(0,0,0,0.55)',
+        textAlign: 'center',
+        pointerEvents: 'auto',
+        cursor: 'pointer',
+      }}
+    >
+      {notice}
+    </div>
+  )
+}
+
 export default function App() {
   const appPhase = useUiStore(s => s.appPhase)
 
@@ -19,6 +50,7 @@ export default function App() {
           <Modals />
         </>
       )}
+      <NoticeBanner />
     </div>
   )
 }

@@ -185,22 +185,43 @@ export function registerSocketHandlers(): void {
   })
 
   // ─── TRADE EVENTS ──────────────────────────────────────────────────
+  const nameOf = (id: string | null | undefined) =>
+    useGameStore.getState().gameState?.players.find(p => p.id === id)?.name ?? 'Spieler'
+  const flashNotice = (msg: string) => {
+    useUiStore.getState().setNotice(msg)
+    setTimeout(() => {
+      if (useUiStore.getState().notice === msg) useUiStore.getState().setNotice(null)
+    }, 4000)
+  }
+  const amInvolved = (trade: { fromPlayerId: string; toPlayerId: string }) => {
+    const me = useSocketStore.getState().myPlayerId
+    return me === trade.fromPlayerId || me === trade.toPlayerId
+  }
+
   socket.on('trade:proposed', ({ trade }) => {
     const gs = useGameStore.getState().gameState
     if (gs) useGameStore.getState().setGameState({ ...gs, activeTrade: trade })
     useUiStore.getState().openModal('trade', { trade })
+    const me = useSocketStore.getState().myPlayerId
+    if (me === trade.toPlayerId) flashNotice(`🤝 ${nameOf(trade.fromPlayerId)} schlägt dir einen Handel vor.`)
   })
 
   socket.on('trade:accepted', ({ gameState }) => {
     if (gameState) useGameStore.getState().setGameState(gameState)
     useUiStore.getState().setTradeTime(null)
     useUiStore.getState().closeModal()
+    flashNotice('✅ Handel abgeschlossen!')
   })
 
   socket.on('trade:countered', ({ trade }) => {
     const gs = useGameStore.getState().gameState
     if (gs) useGameStore.getState().setGameState({ ...gs, activeTrade: trade })
     useUiStore.getState().openModal('trade', { trade })
+    // After a counter, `fromPlayerId` is whoever just sent it.
+    const me = useSocketStore.getState().myPlayerId
+    if (amInvolved(trade) && me !== trade.fromPlayerId) {
+      flashNotice(`🔄 ${nameOf(trade.fromPlayerId)} hat ein Gegenangebot gemacht.`)
+    }
   })
 
   socket.on('trade:confirm-update', ({ trade }) => {
@@ -208,6 +229,11 @@ export function registerSocketHandlers(): void {
     if (gs) useGameStore.getState().setGameState({ ...gs, activeTrade: trade })
     if (useUiStore.getState().activeModal !== 'trade') {
       useUiStore.getState().openModal('trade', { trade })
+    }
+    const me = useSocketStore.getState().myPlayerId
+    const other = me === trade.fromPlayerId ? trade.toPlayerId : trade.fromPlayerId
+    if (amInvolved(trade) && trade.confirmedBy.includes(other) && !trade.confirmedBy.includes(me ?? '')) {
+      flashNotice(`☑️ ${nameOf(other)} hat den Tausch bestätigt – jetzt musst nur noch du bestätigen.`)
     }
   })
 
@@ -221,7 +247,7 @@ export function registerSocketHandlers(): void {
     } else if (gs && trade) {
       const canceller = gs.players.find((p: { id: string; name: string }) => p.id === byId)
       if (canceller) {
-        useUiStore.getState().setError(`${canceller.name} hat den Tausch abgebrochen.`)
+        useUiStore.getState().setError(`🚫 ${canceller.name} hat den Tausch beendet.`)
         setTimeout(() => useUiStore.getState().setError(null), 3500)
       }
     }
