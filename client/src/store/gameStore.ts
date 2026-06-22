@@ -34,7 +34,13 @@ export const useGameStore = create<GameStore>((set) => ({
   setLobbyPlayers: (players) => set({ lobbyPlayers: players }),
   setLobbyAllReady: (v) => set({ lobbyAllReady: v }),
   setLobbySettings: (s) => set({ lobbySettings: s }),
-  addLobbyPlayer: (player) => set((s) => ({ lobbyPlayers: [...s.lobbyPlayers, player] })),
+  // Dedupe by id: a join triggers both `room:lobby-update` (full list) and
+  // `room:player-joined`, which would otherwise add the same player twice.
+  addLobbyPlayer: (player) => set((s) =>
+    s.lobbyPlayers.some(p => p.id === player.id)
+      ? {}
+      : { lobbyPlayers: [...s.lobbyPlayers, player] }
+  ),
   removeLobbyPlayer: (id) => set((s) => ({ lobbyPlayers: s.lobbyPlayers.filter(p => p.id !== id) })),
   clearGame: () => set({ gameState: null, lobbyPlayers: [], lobbyAllReady: false }),
 }))

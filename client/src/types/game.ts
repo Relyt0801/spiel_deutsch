@@ -31,6 +31,8 @@ export interface Player {
   isActive: boolean
   doublesCount: number
   isBot: boolean
+  skipTurns?: number
+  extraTurn?: boolean
 }
 
 export interface PropertyState {

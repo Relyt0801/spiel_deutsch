@@ -219,7 +219,9 @@ export function Board2D() {
     properties.find(p => p.boardIndex === index)
 
   const currentPlayer = gameState ? gameState.players[gameState.currentPlayerIndex] : null
-  const showCenterInfo = viewport.w >= 700 && viewport.h >= 700
+  // Show the in-board info panel whenever the board is big enough to read it.
+  // (Kept in sync with HUD's `isCompact` so exactly one of the two is visible.)
+  const showCenterInfo = viewport.w >= 760 && viewport.h >= 640
 
   return (
     <div className={styles.viewport}>

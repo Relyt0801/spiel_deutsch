@@ -26,7 +26,9 @@ export function HUD() {
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
-  const isMobile = viewport.w < 700 || viewport.h < 700
+  // Below this the board (and thus its center info) gets too small to read, so we
+  // show a compact leaderboard on the LEFT instead. Threshold matches Board2D.
+  const isCompact = viewport.w < 760 || viewport.h < 640
 
   if (!gameState) return null
 
@@ -98,9 +100,10 @@ export function HUD() {
         )}
       </div>
 
-      {/* Mobile player strip — visible only when board center info is hidden */}
-      {isMobile && (
-        <div className={styles.mobilePlayerStrip}>
+      {/* Compact leaderboard on the LEFT — shown when the board center info is hidden
+          (small / short screens like an iPad in landscape). Keeps the top area clear. */}
+      {isCompact && (
+        <div className={styles.leaderboard}>
           {gameState.players.map((p, i) => (
             <div
               key={p.id}

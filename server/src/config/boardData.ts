@@ -77,8 +77,8 @@ export const COLOR_GROUPS: Record<string, number[]> = {
   utility: [12, 28],
 }
 
-export const CHANCE_CARD_IDS = ['C1','C2','C3','C4','C5','C6','C7','C8','C9','C10','C11','C12','C13','C14','C15','C16']
-export const COMMUNITY_CARD_IDS = ['K1','K2','K3','K4','K5','K6','K7','K8','K9','K10','K11','K12','K13','K14','K15','K16']
+export const CHANCE_CARD_IDS = ['C1','C2','C3','C4','C5','C6','C7','C8','C9','C10','C11','C12','C13','C14']
+export const COMMUNITY_CARD_IDS = ['K1','K2','K3','K4','K5','K6','K7','K8','K9','K10','K11','K12','K13']
 
 export const JAIL_INDEX = 10
 export const GO_TO_JAIL_INDEX = 30

@@ -312,7 +312,7 @@
 }
 .overviewBtn:hover { background: rgba(40,0,0,0.85); border-color: rgba(204,0,0,0.7); }
 
-@media (max-width: 700px), (max-height: 700px) {
+@media (max-width: 759px), (max-height: 639px) {
   .overviewBtn { top: 8px; right: 8px; padding: 0.35rem 0.7rem; font-size: 0.72rem; }
 }
 

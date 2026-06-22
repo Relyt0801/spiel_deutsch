@@ -206,34 +206,40 @@
 }
 .btnBankruptLeft:hover { background: rgba(150,0,0,0.85); }
 
-/* ── Mobile player strip ─────────────────────────────────────────────────── */
-.mobilePlayerStrip {
+/* ── Left-side leaderboard (compact / short screens) ─────────────────────── */
+.leaderboard {
   position: absolute;
-  top: 54px;
-  left: 0;
-  right: 0;
+  top: 56px;
+  left: 8px;
   display: flex;
+  flex-direction: column;
   gap: 5px;
-  padding: 4px 8px;
-  overflow-x: auto;
+  padding: 6px;
+  max-height: 62vh;
+  width: min(190px, 44vw);
+  overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
   pointer-events: auto;
-  background: rgba(0,0,0,0.45);
+  background: rgba(0,0,0,0.5);
   backdrop-filter: blur(6px);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px;
 }
-.mobilePlayerStrip::-webkit-scrollbar { display: none; }
+.leaderboard::-webkit-scrollbar { display: none; }
 
 .mobileChip {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
+  width: 100%;
   background: rgba(255,255,255,0.08);
   border: 1px solid rgba(255,255,255,0.15);
-  border-radius: 20px;
-  padding: 4px 9px;
+  border-radius: 10px;
+  padding: 5px 9px;
   white-space: nowrap;
   flex-shrink: 0;
+  box-sizing: border-box;
 }
 .mobileChipActive {
   background: rgba(204,0,0,0.25);
@@ -251,15 +257,20 @@
   font-size: 0.72rem;
   color: white;
   font-weight: 500;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .mobileChipMoney {
   font-size: 0.7rem;
   color: #FFD700;
   font-weight: 700;
+  flex-shrink: 0;
 }
 
-/* ── Mobile responsive overrides ─────────────────────────────────────────── */
-@media (max-width: 700px), (max-height: 700px) {
+/* ── Compact responsive overrides (phones & short/landscape tablets) ─────── */
+@media (max-width: 759px), (max-height: 639px) {
   .turnBanner {
     font-size: 0.78rem;
     padding: 0.35rem 0.9rem;

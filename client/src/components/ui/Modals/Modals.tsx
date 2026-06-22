@@ -398,6 +398,8 @@ function AuctionModal({ myId, gameState }: AuctionModalProps) {
   const me = gameState.players.find(p => p.id === myId)
   const minBid = auction.highestBid + 1
   const numBid = parseInt(bidAmount) || 0
+  // Spieler ohne genug Geld für das Mindestgebot können nicht mitbieten.
+  const canAffordMinBid = !!me && me.money >= minBid
 
   const handleBid = () => {
     if (numBid >= minBid && me && numBid <= me.money) {
@@ -439,26 +441,35 @@ function AuctionModal({ myId, gameState }: AuctionModalProps) {
       </div>
 
       {!alreadyPassed && me && (
-        <div className={styles.bidInputRow}>
-          <input
-            type="number"
-            className={styles.bidInput}
-            value={bidAmount}
-            placeholder={`Min. ${minBid}€`}
-            min={minBid}
-            max={me.money}
-            onChange={e => setBidAmount(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleBid()}
-          />
-          <button className={styles.btnBuy}
-            disabled={numBid < minBid || numBid > me.money}
-            onClick={handleBid}>
-            💰 Bieten
-          </button>
-          <button className={styles.btnAuction} onClick={() => getSocket().emit('auction:pass')}>
-            🚫 Passen
-          </button>
-        </div>
+        <>
+          {!canAffordMinBid && (
+            <p className={styles.warnHint}>
+              💸 Du hast nur {me.money.toLocaleString('de-DE')}€ – das reicht nicht für das
+              Mindestgebot von {minBid}€. Du kannst diese Auktion nur passen.
+            </p>
+          )}
+          <div className={styles.bidInputRow}>
+            <input
+              type="number"
+              className={styles.bidInput}
+              value={bidAmount}
+              placeholder={`Min. ${minBid}€`}
+              min={minBid}
+              max={me.money}
+              disabled={!canAffordMinBid}
+              onChange={e => setBidAmount(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleBid()}
+            />
+            <button className={styles.btnBuy}
+              disabled={!canAffordMinBid || numBid < minBid || numBid > me.money}
+              onClick={handleBid}>
+              💰 Bieten
+            </button>
+            <button className={styles.btnAuction} onClick={() => getSocket().emit('auction:pass')}>
+              🚫 Passen
+            </button>
+          </div>
+        </>
       )}
       {alreadyPassed && (
         <p className={styles.smallText}>Du hast gepasst. Warte auf das Ende der Auktion...</p>

@@ -21,6 +21,10 @@ export interface Player {
   isActive: boolean
   doublesCount: number
   isBot: boolean
+  /** Anzahl Runden, die der Spieler aussetzen muss (z. B. „Update Time!“). */
+  skipTurns: number
+  /** Spieler ist nach Zugende erneut am Zug (z. B. „Tee-Stunde!“). */
+  extraTurn: boolean
 }
 
 export interface PropertyState {
@@ -146,6 +150,8 @@ export function initGameState(
     isBot: p.isBot ?? false,
     isActive: true,
     doublesCount: 0,
+    skipTurns: 0,
+    extraTurn: false,
   }))
 
   const properties: PropertyState[] = BOARD_SQUARES.map(sq => ({
@@ -287,7 +293,7 @@ export function applyLanding(state: GameState, playerId: string): {
       p.id === playerId ? { ...p, money: p.money - paid } : p
     )
     s.freeParkingMoney += paid
-    s = addLog(s, `${player.name} zahlt ${paid}€ Steuer (${square.name}).`, 'warning')
+    s = addLog(s, `${player.name} zahlt ${paid}€ Kopiergeld.`, 'warning')
     s.gamePhase = 'end_turn'
     return { newState: s, event: 'game:landed-tax', data: { amount: paid } }
   }
@@ -544,6 +550,95 @@ export function applyCardEffect(state: GameState, playerId: string): GameState {
       s = addLog(s, `${player.name}: Karte – ${card.amount} Felder zurück.`, 'info')
       const { newState } = applyLanding(s, playerId)
       return newState
+    }
+    case 'MOVE_FORWARD': {
+      const oldPos = player.position
+      const newPos = (oldPos + card.amount!) % 40
+      const passGo = oldPos + card.amount! >= 40
+      s.players = s.players.map((p, i) =>
+        i === pIdx ? { ...p, position: newPos, money: p.money + (passGo ? PASS_GO_AMOUNT : 0) } : p
+      )
+      s = addLog(s, `${player.name}: Karte – ${card.amount} Felder vor${passGo ? ` +${PASS_GO_AMOUNT}€` : ''}.`, 'info')
+      const { newState } = applyLanding(s, playerId)
+      return newState
+    }
+    case 'PAY_FREE_PARKING': {
+      const amount = card.amount!
+      s.players = s.players.map((p, i) =>
+        i === pIdx ? { ...p, money: p.money - amount } : p
+      )
+      s.freeParkingMoney += amount
+      s = addLog(s, `${player.name}: Karte – zahlt ${amount}€ in die Freistunde. ☕`, 'warning')
+      break
+    }
+    case 'PLAYERS_PAY_FREE_PARKING': {
+      const amount = card.amount!
+      const contributors = s.players.filter(p => p.isActive && !p.isBankrupt)
+      s.players = s.players.map(p =>
+        (p.isActive && !p.isBankrupt) ? { ...p, money: p.money - amount } : p
+      )
+      s.freeParkingMoney += amount * contributors.length
+      s = addLog(s, `${player.name}: Karte – jeder Spieler zahlt ${amount}€ in die Freistunde. ☕`, 'warning')
+      break
+    }
+    case 'COLLECT_FROM_RICHEST': {
+      const amount = card.amount!
+      const opponents = s.players.filter(p => p.id !== playerId && p.isActive && !p.isBankrupt)
+      if (opponents.length === 0) {
+        s = addLog(s, `${player.name}: Karte – kein Mitspieler vorhanden.`, 'info')
+        break
+      }
+      const richest = opponents.reduce((a, b) => (b.money > a.money ? b : a))
+      const paid = Math.min(amount, richest.money)
+      s.players = s.players.map(p => {
+        if (p.id === playerId) return { ...p, money: p.money + paid }
+        if (p.id === richest.id) return { ...p, money: p.money - paid }
+        return p
+      })
+      s = addLog(s, `${player.name}: Karte – erhält ${paid}€ von ${richest.name} (reichster Mitspieler).`, 'success')
+      break
+    }
+    case 'SKIP_TURN': {
+      s.players = s.players.map((p, i) =>
+        i === pIdx ? { ...p, skipTurns: p.skipTurns + 1 } : p
+      )
+      s = addLog(s, `${player.name}: Karte – setzt eine Runde aus.`, 'warning')
+      break
+    }
+    case 'EXTRA_TURN': {
+      s.players = s.players.map((p, i) =>
+        i === pIdx ? { ...p, extraTurn: true } : p
+      )
+      s = addLog(s, `${player.name}: Karte – ist erneut am Zug!`, 'success')
+      break
+    }
+    case 'ROLL_OR_JAIL': {
+      const rolls: DiceRoll[] = [rollDice(), rollDice(), rollDice()]
+      const saved = rolls.some(r => r.isDouble)
+      const detail = rolls.map(r => `${r.die1}+${r.die2}`).join(', ')
+      if (saved) {
+        s = addLog(s, `${player.name}: Blauer Brief – gewürfelt (${detail}), Pasch dabei – gerettet!`, 'success')
+        break
+      }
+      s = addLog(s, `${player.name}: Blauer Brief – gewürfelt (${detail}), kein Pasch – ab in den Bildungsbunker!`, 'warning')
+      return sendToJail(s, playerId)
+    }
+    case 'CLASSROOM_ROLL': {
+      const amount = card.amount!
+      const roll = rollDice()
+      if (roll.total > 10) {
+        s.players = s.players.map((p, i) =>
+          i === pIdx ? { ...p, money: p.money + amount } : p
+        )
+        s = addLog(s, `${player.name}: Classroom – ${roll.die1}+${roll.die2}=${roll.total} (über 10), erhält ${amount}€!`, 'success')
+      } else {
+        s.players = s.players.map((p, i) =>
+          i === pIdx ? { ...p, money: p.money - amount } : p
+        )
+        s.freeParkingMoney += amount
+        s = addLog(s, `${player.name}: Classroom – ${roll.die1}+${roll.die2}=${roll.total} (10 oder weniger), zahlt ${amount}€ in die Freistunde.`, 'warning')
+      }
+      break
     }
     case 'BUILDING_REPAIRS': {
       const houseCount = player.properties.reduce((acc, pi) => acc + s.properties[pi].houses, 0)
@@ -896,9 +991,23 @@ export function advanceTurn(state: GameState): GameState {
   const activePlayers = s.players.filter(p => p.isActive && !p.isBankrupt)
   if (activePlayers.length <= 1) return s
 
-  let nextIdx = (s.currentPlayerIndex + 1) % s.players.length
-  while (s.players[nextIdx].isBankrupt || !s.players[nextIdx].isActive) {
-    nextIdx = (nextIdx + 1) % s.players.length
+  const findNext = (from: number): number => {
+    let idx = (from + 1) % s.players.length
+    while (s.players[idx].isBankrupt || !s.players[idx].isActive) {
+      idx = (idx + 1) % s.players.length
+    }
+    return idx
+  }
+
+  let nextIdx = findNext(s.currentPlayerIndex)
+  // Players who drew "Update Time!" must sit a turn out – skip them (and burn one skip).
+  while (s.players[nextIdx].skipTurns > 0) {
+    const skipper = s.players[nextIdx]
+    s.players = s.players.map((p, i) => i === nextIdx ? { ...p, skipTurns: p.skipTurns - 1 } : p)
+    s = addLog(s, `${skipper.name} setzt diese Runde aus.`, 'info')
+    const after = findNext(nextIdx)
+    if (after === nextIdx) break // safety: no other eligible player
+    nextIdx = after
   }
 
   s.currentPlayerIndex = nextIdx
@@ -917,6 +1026,17 @@ export function advanceTurn(state: GameState): GameState {
 
 export function handleEndTurn(state: GameState): GameState {
   const currentPlayer = state.players[state.currentPlayerIndex]
+  const idx = state.currentPlayerIndex
+
+  // "Tee-Stunde!" / extra-turn card: same player goes again with a fresh roll.
+  if (currentPlayer.extraTurn && !currentPlayer.isBankrupt) {
+    return {
+      ...state,
+      players: state.players.map((p, i) => i === idx ? { ...p, extraTurn: false, doublesCount: 0 } : p),
+      gamePhase: 'rolling',
+      currentDiceRoll: null,
+    }
+  }
 
   // Doubles grant another roll for the same player. The running count of
   // consecutive doubles (and the 3rd-double-goes-to-jail rule) is handled at

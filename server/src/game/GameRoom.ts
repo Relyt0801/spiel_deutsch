@@ -728,6 +728,8 @@ export class GameRoom {
         this.broadcast('auction:tick', { timeRemaining: 10 })
       }
       this.broadcast('auction:bid-placed', { playerId: socketId, amount, auction: this.state.auction })
+      // If everyone else has already passed, the bidder wins right away.
+      if (this.resolveAuctionIfDone()) return
       // Let the other bots react to the new highest bid.
       this.scheduleBotAuctionRound(socketId)
     } else {
@@ -737,16 +739,42 @@ export class GameRoom {
 
   handleAuctionPass(socketId: string): void {
     if (!this.state?.auction) return
+    // Only players still in the auction can pass.
+    if (this.state.auction.passedPlayers.includes(socketId)) return
     this.state = passAuction(this.state, socketId)
-    const activePlayers = this.state.players.filter(p => p.isActive && !p.isBankrupt)
+    if (!this.state.auction) return
+    // Let everyone see the updated "passed" status, then check if the auction is decided.
+    this.broadcast('auction:bid-placed', {
+      playerId: socketId,
+      amount: this.state.auction.highestBid,
+      auction: this.state.auction,
+    })
+    this.broadcastState()
+    this.resolveAuctionIfDone()
+  }
+
+  /**
+   * Ends the auction only when it is genuinely decided:
+   *  - everyone has passed (no winner), or
+   *  - just one player remains AND that player already holds the highest bid.
+   * This stops the player who *started* the auction (by declining) from ending it
+   * for everyone simply by passing before anyone else got a chance to bid.
+   */
+  private resolveAuctionIfDone(): boolean {
+    if (!this.state?.auction) return false
     const auction = this.state.auction
-    if (auction && auction.passedPlayers.length >= activePlayers.length - 1) {
-      if (this.auctionTimer) clearInterval(this.auctionTimer)
-      this.state = endAuction(this.state)
-      this.broadcast('auction:ended', { winnerId: auction.highestBidderId, amount: auction.highestBid, gameState: this.state })
-      this.broadcastState()
-      this.processAuctionQueue()
-    }
+    const activePlayers = this.state.players.filter(p => p.isActive && !p.isBankrupt)
+    const remaining = activePlayers.filter(p => !auction.passedPlayers.includes(p.id))
+    const everyonePassed = remaining.length === 0
+    const onlyLeaderLeft = remaining.length === 1 && auction.highestBidderId === remaining[0].id
+    if (!everyonePassed && !onlyLeaderLeft) return false
+
+    if (this.auctionTimer) clearInterval(this.auctionTimer)
+    this.state = endAuction(this.state)
+    this.broadcast('auction:ended', { winnerId: auction.highestBidderId, amount: auction.highestBid, gameState: this.state })
+    this.broadcastState()
+    this.processAuctionQueue()
+    return true
   }
 
   handleEndTurn(socketId: string): void {

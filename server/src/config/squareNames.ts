@@ -4,7 +4,7 @@ export const SQUARE_NAMES: string[] = [
   'Schulgarten',           // 1  Brown
   'Klassenbuch',           // 2  Community Chest
   'Herr Schmieders Home',  // 3  Brown
-  'Entfall',               // 4  Tax 200€
+  'Kopiergeld',            // 4  Tax 200€
   'Aldi',                  // 5  Railroad 1
   'K-Trackt',              // 6  Light blue
   'Ereignisfeld',          // 7  Chance
@@ -38,6 +38,6 @@ export const SQUARE_NAMES: string[] = [
   'Lehrerzimmer',          // 35 Railroad 4
   'Ereignisfeld',          // 36 Chance
   'BASE',                  // 37 Dark blue
-  'Vertretung',            // 38 Tax 100€
+  'Kopiergeld',            // 38 Tax 100€
   "Fr. Prangenbergs Büro", // 39 Dark blue
 ]
