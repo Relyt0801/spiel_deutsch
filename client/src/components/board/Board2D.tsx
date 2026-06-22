@@ -219,7 +219,9 @@ export function Board2D() {
     properties.find(p => p.boardIndex === index)
 
   const currentPlayer = gameState ? gameState.players[gameState.currentPlayerIndex] : null
-  const showCenterInfo = viewport.w >= 700 && viewport.h >= 700
+  // Tablets & desktop show the full info panel in the board centre (turn, players,
+  // money, log) for every game type. Small phones get a compact left leaderboard instead.
+  const showCenterInfo = Math.min(viewport.w, viewport.h) >= 600
 
   return (
     <div className={styles.viewport}>

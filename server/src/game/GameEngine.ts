@@ -21,6 +21,7 @@ export interface Player {
   isActive: boolean
   doublesCount: number
   isBot: boolean
+  skipTurns: number
 }
 
 export interface PropertyState {
@@ -146,6 +147,7 @@ export function initGameState(
     isBot: p.isBot ?? false,
     isActive: true,
     doublesCount: 0,
+    skipTurns: 0,
   }))
 
   const properties: PropertyState[] = BOARD_SQUARES.map(sq => ({
@@ -555,6 +557,75 @@ export function applyCardEffect(state: GameState, playerId: string): GameState {
       s = addLog(s, `${player.name}: Gebäudereparatur – zahlt ${total}€.`, 'warning')
       break
     }
+    case 'MOVE_FORWARD': {
+      const newPos = (player.position + card.amount!) % 40
+      const passedGo = newPos < player.position
+      s.players = s.players.map((p, i) =>
+        i === pIdx ? { ...p, position: newPos, money: p.money + (passedGo ? PASS_GO_AMOUNT : 0) } : p
+      )
+      s = addLog(s, `${player.name}: Karte – ${card.amount} Felder vor${passedGo ? ` (+${PASS_GO_AMOUNT}€)` : ''}.`, 'info')
+      const { newState } = applyLanding(s, playerId)
+      return newState
+    }
+    case 'PAY_PARKING': {
+      const paid = Math.min(card.amount!, player.money)
+      s.players = s.players.map((p, i) => i === pIdx ? { ...p, money: p.money - paid } : p)
+      s.freeParkingMoney += paid
+      s = addLog(s, `${player.name}: Karte – zahlt ${paid}€ in die Freie Pause.`, 'warning')
+      break
+    }
+    case 'EACH_PAY_PARKING': {
+      const amt = card.amount!
+      let pot = 0
+      s.players = s.players.map(p => {
+        if (p.isActive && !p.isBankrupt) {
+          const paid = Math.min(amt, p.money)
+          pot += paid
+          return { ...p, money: p.money - paid }
+        }
+        return p
+      })
+      s.freeParkingMoney += pot
+      s = addLog(s, `${player.name}: Karte – jeder zahlt ${amt}€ in die Freie Pause.`, 'warning')
+      break
+    }
+    case 'COLLECT_FROM_ONE': {
+      const amt = card.amount!
+      const opponents = s.players.filter(p => p.id !== playerId && p.isActive && !p.isBankrupt)
+      if (opponents.length > 0) {
+        const richest = opponents.reduce((a, b) => (b.money > a.money ? b : a))
+        const paid = Math.min(amt, richest.money)
+        s.players = s.players.map(p =>
+          p.id === playerId ? { ...p, money: p.money + paid }
+            : p.id === richest.id ? { ...p, money: p.money - paid } : p
+        )
+        s = addLog(s, `${player.name}: Karte – erhält ${paid}€ von ${richest.name}.`, 'success')
+      }
+      break
+    }
+    case 'CLASSROOM_GAMBLE': {
+      const amt = card.amount ?? 100
+      const total = (Math.floor(Math.random() * 6) + 1) + (Math.floor(Math.random() * 6) + 1)
+      if (total > 10) {
+        s.players = s.players.map((p, i) => i === pIdx ? { ...p, money: p.money + amt } : p)
+        s = addLog(s, `${player.name}: Würfelt ${total} (>10) – erhält ${amt}€!`, 'success')
+      } else {
+        const paid = Math.min(amt, player.money)
+        s.players = s.players.map((p, i) => i === pIdx ? { ...p, money: p.money - paid } : p)
+        s.freeParkingMoney += paid
+        s = addLog(s, `${player.name}: Würfelt ${total} (≤10) – zahlt ${paid}€ in die Freie Pause.`, 'warning')
+      }
+      break
+    }
+    case 'SKIP_TURN': {
+      s.players = s.players.map((p, i) => i === pIdx ? { ...p, skipTurns: p.skipTurns + 1 } : p)
+      s = addLog(s, `${player.name}: Karte – muss eine Runde aussetzen.`, 'warning')
+      break
+    }
+    case 'EXTRA_TURN': {
+      s = addLog(s, `${player.name}: Karte – ist gleich nochmal am Zug!`, 'success')
+      return { ...s, gamePhase: 'rolling', currentDiceRoll: null }
+    }
   }
 
   // End the player's action; the normal end-turn flow then handles doubles re-rolls.
@@ -897,8 +968,22 @@ export function advanceTurn(state: GameState): GameState {
   if (activePlayers.length <= 1) return s
 
   let nextIdx = (s.currentPlayerIndex + 1) % s.players.length
-  while (s.players[nextIdx].isBankrupt || !s.players[nextIdx].isActive) {
-    nextIdx = (nextIdx + 1) % s.players.length
+  let guard = 0
+  const maxSteps = s.players.length * 3
+  while (guard++ < maxSteps) {
+    const np = s.players[nextIdx]
+    if (np.isBankrupt || !np.isActive) {
+      nextIdx = (nextIdx + 1) % s.players.length
+      continue
+    }
+    if (np.skipTurns > 0) {
+      // This player must sit a turn out – consume one and move on.
+      s.players = s.players.map((p, i) => i === nextIdx ? { ...p, skipTurns: p.skipTurns - 1 } : p)
+      s = addLog(s, `${np.name} setzt eine Runde aus.`, 'warning')
+      nextIdx = (nextIdx + 1) % s.players.length
+      continue
+    }
+    break
   }
 
   s.currentPlayerIndex = nextIdx

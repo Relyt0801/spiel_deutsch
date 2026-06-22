@@ -738,9 +738,16 @@ export class GameRoom {
   handleAuctionPass(socketId: string): void {
     if (!this.state?.auction) return
     this.state = passAuction(this.state, socketId)
-    const activePlayers = this.state.players.filter(p => p.isActive && !p.isBankrupt)
+    const active = this.state.players.filter(p => p.isActive && !p.isBankrupt)
     const auction = this.state.auction
-    if (auction && auction.passedPlayers.length >= activePlayers.length - 1) {
+    if (!auction) return
+    const remaining = active.filter(p => !auction.passedPlayers.includes(p.id))
+    // End only when EVERYONE passed (no winner), or when just one bidder is left AND a
+    // real bid exists (that bidder wins). A lone remaining player with no bid keeps the
+    // auction open so the starter can't abort it for everyone by passing.
+    const everyonePassed = remaining.length === 0
+    const oneLeftWithBid = remaining.length <= 1 && !!auction.highestBidderId
+    if (everyonePassed || oneLeftWithBid) {
       if (this.auctionTimer) clearInterval(this.auctionTimer)
       this.state = endAuction(this.state)
       this.broadcast('auction:ended', { winnerId: auction.highestBidderId, amount: auction.highestBid, gameState: this.state })

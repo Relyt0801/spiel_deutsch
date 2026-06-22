@@ -26,7 +26,8 @@ export function HUD() {
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
-  const isMobile = viewport.w < 700 || viewport.h < 700
+  // Small phones (board centre info hidden) get a compact LEFT leaderboard.
+  const isSmall = Math.min(viewport.w, viewport.h) < 600
 
   if (!gameState) return null
 
@@ -98,9 +99,9 @@ export function HUD() {
         )}
       </div>
 
-      {/* Mobile player strip — visible only when board center info is hidden */}
-      {isMobile && (
-        <div className={styles.mobilePlayerStrip}>
+      {/* Left leaderboard — shown only on small phones (board centre info hidden) */}
+      {isSmall && (
+        <div className={styles.leftLeaderboard}>
           {gameState.players.map((p, i) => (
             <div
               key={p.id}

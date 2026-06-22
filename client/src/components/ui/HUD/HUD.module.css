@@ -206,23 +206,25 @@
 }
 .btnBankruptLeft:hover { background: rgba(150,0,0,0.85); }
 
-/* ── Mobile player strip ─────────────────────────────────────────────────── */
-.mobilePlayerStrip {
+/* ── Left leaderboard (small phones) ─────────────────────────────────────── */
+.leftLeaderboard {
   position: absolute;
-  top: 54px;
-  left: 0;
-  right: 0;
+  top: 56px;
+  left: 6px;
+  max-height: 60vh;
   display: flex;
+  flex-direction: column;
   gap: 5px;
-  padding: 4px 8px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  padding: 6px;
+  overflow-y: auto;
   scrollbar-width: none;
   pointer-events: auto;
-  background: rgba(0,0,0,0.45);
+  background: rgba(0,0,0,0.5);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
   backdrop-filter: blur(6px);
 }
-.mobilePlayerStrip::-webkit-scrollbar { display: none; }
+.leftLeaderboard::-webkit-scrollbar { display: none; }
 
 .mobileChip {
   display: flex;
