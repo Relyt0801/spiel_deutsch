@@ -315,7 +315,8 @@ function CardModal({ data, closeModal }: CardModalProps) {
 
   useEffect(() => {
     if (!isMyTurn) {
-      const t = setTimeout(() => closeModal(), 4000)
+      // Observers can't click "OK" – leave the card up long enough to read the (longer) text.
+      const t = setTimeout(() => closeModal(), 8000)
       return () => clearTimeout(t)
     }
   }, [isMyTurn, closeModal])

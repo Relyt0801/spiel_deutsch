@@ -150,7 +150,8 @@ export class GameRoom {
 
     const botId = cp.id
     const phase = this.state.gamePhase
-    const delay = phase === 'rolling' ? 1500 : 1000
+    // Linger on a drawn card so everyone can read it before the bot acknowledges.
+    const delay = phase === 'rolling' ? 1500 : phase === 'card_drawn' ? 4500 : 1000
 
     const timer = setTimeout(() => {
       this.pendingBotTimers.delete(timer)
