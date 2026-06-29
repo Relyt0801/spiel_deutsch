@@ -250,11 +250,36 @@ export class GameRoom {
     const sq = BOARD_SQUARES[idx]
     if (!sq || sq.type !== 'property' || !sq.group || !this.state) return false
     const group = COLOR_GROUPS[sq.group] ?? []
+    const owned = group.filter(i => this.state!.properties[i]?.ownerId === playerId).length
     const byOther = group.filter(i => {
       const o = this.state!.properties[i]?.ownerId
       return o && o !== playerId
     }).length
-    return byOther >= 1 // an opponent already blocks this set
+    // Spare only if an opponent already blocks the set AND the bot isn't itself
+    // holding several of the colour (≥2 = building/blocking a set → keep it!).
+    return byOther >= 1 && owned <= 1
+  }
+
+  /**
+   * A street the bot must NEVER give away in a trade: it owns ≥2 of the colour
+   * group (a near-complete or complete set), or ≥2 railroads / both works. Giving
+   * these up throws away a monopoly – and would often hand the opponent theirs.
+   */
+  private isProtectedSetProperty(playerId: string, idx: number): boolean {
+    const sq = BOARD_SQUARES[idx]
+    if (!sq || !this.state) return false
+    if (sq.type === 'property' && sq.group) {
+      const group = COLOR_GROUPS[sq.group] ?? []
+      const owned = group.filter(i => this.state!.properties[i]?.ownerId === playerId).length
+      return owned >= 2
+    }
+    if (sq.type === 'railroad') {
+      return RAILROAD_INDICES.filter(i => this.state!.properties[i]?.ownerId === playerId).length >= 2
+    }
+    if (sq.type === 'utility') {
+      return UTILITY_INDICES.filter(i => this.state!.properties[i]?.ownerId === playerId).length >= 2
+    }
+    return false
   }
 
   private botShouldBuy(botId: string, idx: number): boolean {
@@ -304,8 +329,10 @@ export class GameRoom {
     }
 
     const wants: number[] = trade.offeredProperties // streets the bot would receive
-    // Refuse to hand over streets the bot strongly values (its own set-builders).
+    // Refuse to hand over set-builders: never give a near/complete set (≥2 of a
+    // colour) away, and keep streets the bot strongly values.
     const give = trade.requestedProperties.filter(i => {
+      if (this.isProtectedSetProperty(botId, i)) return false
       const sv = this.propertyStrategicValue(botId, i)
       return !(sv >= (BOARD_SQUARES[i]?.price ?? 0) * 1.5)
     })
@@ -427,8 +454,10 @@ export class GameRoom {
       const cashOut = giveMoney - recvMoney
       const ratio = receives / Math.max(1, gives)
 
-      // Hard guards — a bot must never lose value or bleed cash for nothing.
+      // Hard guards — a bot must never lose value, bleed cash for nothing, or give
+      // away a near/complete set (≥2 of a colour).
       const losesCashForNothing = cashOut > 0 && getProps.recv.length === 0
+      const givesProtectedSet = getProps.give.some(i => this.isProtectedSetProperty(botId, i))
       const reserveOk = bot.money - Math.max(0, cashOut) >= 120
       // Accept only when the total value coming back is fair-or-better (small random margin).
       // (Set-completing streets are already valued ~2.4× by bundleValue, so the bot will
@@ -437,7 +466,7 @@ export class GameRoom {
 
       const canCounter = !botIsFrom && this.tradeCounterRounds < 5
 
-      if (fair && reserveOk && !losesCashForNothing) {
+      if (fair && reserveOk && !losesCashForNothing && !givesProtectedSet) {
         this.handleConfirmTrade(botId, tradeId)
       } else if (canCounter && ratio >= 0.15 && !losesCashForNothing) {
         // Not completely off → make a flexible counter rather than flatly rejecting.
@@ -450,10 +479,11 @@ export class GameRoom {
         if (counterReserveOk && changed) {
           this.handleCounterTrade(botId, c)
         } else {
-          // Fallback: keep streets, just rebalance with cash so the bot ends up fair.
+          // Fallback: keep streets (minus any protected set), just rebalance with cash.
+          const safeGive = trade.requestedProperties.filter(i => !this.isProtectedSetProperty(botId, i))
           const askExtra = Math.max(0, Math.floor((gives - receives) * (0.8 + Math.random() * 0.4)))
           this.handleCounterTrade(botId, {
-            offeredProperties: trade.requestedProperties,
+            offeredProperties: safeGive,
             requestedProperties: trade.offeredProperties,
             offeredMoney: 0,
             requestedMoney: trade.offeredMoney + askExtra,

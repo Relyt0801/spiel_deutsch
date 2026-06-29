@@ -8,7 +8,8 @@ let socket: AppSocket | null = null
 
 export function getSocket(): AppSocket {
   if (!socket) {
-    socket = io(SOCKET_URL, {
+    // Empty SOCKET_URL → connect to the same origin (single-service deployment).
+    socket = io(SOCKET_URL || undefined, {
       autoConnect: false,
       reconnection: true,
       reconnectionAttempts: 60,
