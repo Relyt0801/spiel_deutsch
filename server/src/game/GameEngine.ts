@@ -25,6 +25,8 @@ export interface Player {
   skipTurns: number
   /** Spieler ist nach Zugende erneut am Zug (z. B. „Tee-Stunde!“). */
   extraTurn: boolean
+  /** Vorübergehend getrennt (Reload) – hat ein Zeitfenster zum Wiederverbinden. */
+  disconnected: boolean
 }
 
 export interface PropertyState {
@@ -152,6 +154,7 @@ export function initGameState(
     doublesCount: 0,
     skipTurns: 0,
     extraTurn: false,
+    disconnected: false,
   }))
 
   const properties: PropertyState[] = BOARD_SQUARES.map(sq => ({
@@ -924,6 +927,7 @@ export function declareBankruptcy(
   playerId: string,
   creditorId: string | null,
   mode: BankruptcyMode = 'auction',
+  advanceAfter = true,
 ): GameState {
   let s = { ...state }
   const player = s.players.find(p => p.id === playerId)!
@@ -974,7 +978,7 @@ export function declareBankruptcy(
     s.winnerId = winner
     s.gamePhase = 'game_over'
     s = addLog(s, `${s.players.find(p => p.id === winner)!.name} hat gewonnen!`, 'success')
-  } else {
+  } else if (advanceAfter) {
     s = advanceTurn(s)
   }
   return s

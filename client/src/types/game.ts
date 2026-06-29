@@ -33,6 +33,7 @@ export interface Player {
   isBot: boolean
   skipTurns?: number
   extraTurn?: boolean
+  disconnected?: boolean
 }
 
 export interface PropertyState {

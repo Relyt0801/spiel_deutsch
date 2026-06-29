@@ -549,8 +549,12 @@
   text-align: left;
 }
 .standingRow.bankrupt { opacity: 0.45; }
+.standingTop {
+  background: linear-gradient(90deg, rgba(255,215,0,0.22), rgba(255,215,0,0.06));
+  border: 1px solid rgba(255,215,0,0.45);
+}
 
-.rank { color: #FFD700; font-weight: 700; width: 18px; flex-shrink: 0; }
+.rank { color: #FFD700; font-weight: 700; width: 22px; flex-shrink: 0; text-align: center; }
 .standingDot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .standingName { flex: 1; font-weight: 500; }
 .standingMoney { color: #4ade80; font-weight: 600; }

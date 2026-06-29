@@ -10,6 +10,7 @@ import {
 import type { TradeOffer, DiceRoll, GameSettings, GamePhase } from './GameEngine'
 import { BOARD_SQUARES, COLOR_GROUPS, DOUBLE_IN_ROW_JAIL, RAILROAD_INDICES, UTILITY_INDICES } from '../config/boardData'
 import { logger } from '../utils/logger'
+import { generateBotName } from '../utils/botNames'
 
 export type LobbyPlayer = {
   id: string
@@ -17,12 +18,19 @@ export type LobbyPlayer = {
   color: string
   piece: string
   isBot: boolean
+  token?: string
+  disconnected?: boolean
 }
+
+/** Grace period (ms) a reloading player has to rejoin before being removed. */
+export const RECONNECT_GRACE_MS = 60_000
 
 export class GameRoom {
   code: string
   hostId: string
   state: GameState | null = null
+  /** Set by RoomManager to clean up the room once the last human is gone. */
+  onEmpty?: () => void
   lobbyPlayers: LobbyPlayer[] = []
   readyPlayers: Set<string> = new Set()
   settings: GameSettings = { ...DEFAULT_SETTINGS }
@@ -36,6 +44,10 @@ export class GameRoom {
   private botAuctionVals: Record<string, number> = {}
   private botAuctionPending: Set<string> = new Set()
   private tradeCounterRounds = 0
+  // Reconnect support: stable client token ⇄ current playerId, plus per-player grace timers.
+  private tokenByPlayer: Map<string, string> = new Map()
+  private playerByToken: Map<string, string> = new Map()
+  private disconnectTimers: Map<string, ReturnType<typeof setTimeout>> = new Map()
 
   constructor(code: string, hostId: string, io: Server) {
     this.code = code
@@ -43,10 +55,17 @@ export class GameRoom {
     this.io = io
   }
 
+  private setToken(playerId: string, token?: string): void {
+    if (!token) return
+    this.tokenByPlayer.set(playerId, token)
+    this.playerByToken.set(token, playerId)
+  }
+
   // ─── Lobby management ────────────────────────────────────────────────────
 
-  addLobbyPlayer(id: string, name: string, color: string, piece: string): void {
+  addLobbyPlayer(id: string, name: string, color: string, piece: string, token?: string): void {
     this.lobbyPlayers.push({ id, name, color, piece, isBot: false })
+    this.setToken(id, token)
     this.broadcastLobbyUpdate()
   }
 
@@ -58,9 +77,9 @@ export class GameRoom {
     const takenPieces = this.lobbyPlayers.map(p => p.piece)
     const color = botColors.find(c => !takenColors.includes(c)) ?? 'blue'
     const piece = botPieces.find(p => !takenPieces.includes(p)) ?? 'Radiergummi'
-    const botCount = this.lobbyPlayers.filter(p => p.isBot).length + 1
-    const botId = `bot_${Date.now()}_${botCount}`
-    this.lobbyPlayers.push({ id: botId, name: `Bot ${botCount}`, color, piece, isBot: true })
+    const name = generateBotName(this.lobbyPlayers.map(p => p.name))
+    const botId = `bot_${Date.now()}_${Math.floor(Math.random() * 100000)}`
+    this.lobbyPlayers.push({ id: botId, name, color, piece, isBot: true })
     this.readyPlayers.add(botId)
     this.broadcastLobbyUpdate()
   }
@@ -90,16 +109,30 @@ export class GameRoom {
     return nonHostHumans.every(p => this.readyPlayers.has(p.id))
   }
 
-  getLobbyWithStatus(): Array<LobbyPlayer & { isReady: boolean }> {
-    return this.lobbyPlayers.map(p => ({
+  getLobbyWithStatus(): Array<Omit<LobbyPlayer, 'token'> & { isReady: boolean }> {
+    // Never expose the private reconnect token to clients.
+    return this.lobbyPlayers.map(({ token, ...p }) => ({
       ...p,
       isReady: p.isBot || this.readyPlayers.has(p.id),
     }))
   }
 
+  private forgetToken(playerId: string): void {
+    const token = this.tokenByPlayer.get(playerId)
+    if (token) this.playerByToken.delete(token)
+    this.tokenByPlayer.delete(playerId)
+  }
+
+  private clearDisconnectTimer(playerId: string): void {
+    const t = this.disconnectTimers.get(playerId)
+    if (t) { clearTimeout(t); this.disconnectTimers.delete(playerId) }
+  }
+
   removeLobbyPlayer(id: string): void {
     this.lobbyPlayers = this.lobbyPlayers.filter(p => p.id !== id)
     this.readyPlayers.delete(id)
+    this.clearDisconnectTimer(id)
+    this.forgetToken(id)
     if (this.state) {
       this.state.players = this.state.players.map(p =>
         p.id === id ? { ...p, isActive: false } : p
@@ -117,6 +150,160 @@ export class GameRoom {
   startGame(): void {
     this.state = initGameState(this.lobbyPlayers, this.code, this.hostId, this.settings)
     this.broadcastState() // manageTurnTimer() inside starts the clock when time-limit is on
+  }
+
+  // ─── Disconnect / reconnect grace ─────────────────────────────────────────
+
+  /** A socket dropped (reload/network). Keep the slot alive for RECONNECT_GRACE_MS. */
+  handleDisconnect(playerId: string): void {
+    const lobbyP = this.lobbyPlayers.find(p => p.id === playerId)
+    if (lobbyP?.isBot) return
+    const inState = this.state?.players.some(p => p.id === playerId) ?? false
+    if (!lobbyP && !inState) return
+    // No reconnect token → can't be restored, drop right away.
+    if (!this.tokenByPlayer.has(playerId)) { this.dropPlayer(playerId); return }
+
+    if (lobbyP) lobbyP.disconnected = true
+    if (this.state) {
+      this.state.players = this.state.players.map(p =>
+        p.id === playerId ? { ...p, disconnected: true } : p)
+    }
+    this.clearDisconnectTimer(playerId)
+    this.disconnectTimers.set(playerId, setTimeout(() => {
+      this.disconnectTimers.delete(playerId)
+      this.dropPlayer(playerId)
+    }, RECONNECT_GRACE_MS))
+
+    if (this.state) this.broadcastState()
+    else this.broadcastLobbyUpdate()
+  }
+
+  /** Re-attach a reloaded client (new socket id) to its old slot via the stable token. */
+  reconnectPlayer(newSocketId: string, token: string): { isHost: boolean; inGame: boolean } | null {
+    const oldId = this.playerByToken.get(token)
+    if (!oldId) return null
+    const present = this.lobbyPlayers.some(p => p.id === oldId) ||
+      (this.state?.players.some(p => p.id === oldId) ?? false)
+    if (!present) return null
+
+    this.clearDisconnectTimer(oldId)
+    if (oldId !== newSocketId) this.reassignPlayerId(oldId, newSocketId)
+
+    const lp = this.lobbyPlayers.find(p => p.id === newSocketId)
+    if (lp) lp.disconnected = false
+    if (this.state) {
+      this.state.players = this.state.players.map(p =>
+        p.id === newSocketId ? { ...p, disconnected: false } : p)
+    }
+
+    if (this.state) this.broadcastState()
+    else this.broadcastLobbyUpdate()
+    return { isHost: this.hostId === newSocketId, inGame: !!this.state }
+  }
+
+  /** Explicit "Verlassen" – out immediately, no grace. */
+  handleExplicitLeave(playerId: string): void {
+    this.dropPlayer(playerId)
+  }
+
+  /** Remove a player for good: bankruptcy (in game, per chosen mode) or lobby removal. */
+  private dropPlayer(playerId: string): void {
+    this.clearDisconnectTimer(playerId)
+    if (this.state) {
+      const player = this.state.players.find(p => p.id === playerId)
+      if (player && player.isActive && !player.isBankrupt) {
+        const isCurrent = this.state.players[this.state.currentPlayerIndex]?.id === playerId
+        this.state = declareBankruptcy(this.state, playerId, null, this.settings.bankruptcyMode, isCurrent)
+        this.broadcast('game:player-bankrupt', { playerId, gameState: this.state })
+        if (this.state.gamePhase === 'game_over') {
+          this.broadcast('game:over', { winnerId: this.state.winnerId, gameState: this.state })
+        }
+      }
+      this.lobbyPlayers = this.lobbyPlayers.filter(p => p.id !== playerId)
+      this.readyPlayers.delete(playerId)
+      this.forgetToken(playerId)
+      this.ensureHost()
+      this.broadcastState()
+      this.processAuctionQueue()
+    } else {
+      this.removeLobbyPlayer(playerId) // also forgets token + timer
+      this.ensureHost()
+      this.broadcastLobbyUpdate()
+    }
+    this.maybeCleanupEmpty()
+  }
+
+  /** Hand the host role to another human if the current host is gone. */
+  private ensureHost(): void {
+    if (this.lobbyPlayers.some(p => p.id === this.hostId)) return
+    const newHost = this.lobbyPlayers.find(p => !p.isBot) ?? this.lobbyPlayers[0]
+    if (newHost) {
+      this.hostId = newHost.id
+      if (this.state) this.state.hostId = newHost.id
+    }
+  }
+
+  private maybeCleanupEmpty(): void {
+    const humans = this.lobbyPlayers.filter(p => !p.isBot)
+    if (humans.length === 0) this.onEmpty?.()
+  }
+
+  /** Restart in the SAME lobby after a game (host only). */
+  resetToLobby(socketId: string): void {
+    if (socketId !== this.hostId || !this.state) return
+    if (this.auctionTimer) { clearInterval(this.auctionTimer); this.auctionTimer = null }
+    this.clearTurnTimer()
+    this.clearTradeTimer()
+    for (const t of this.pendingBotTimers) clearTimeout(t)
+    this.pendingBotTimers.clear()
+    for (const t of this.disconnectTimers.values()) clearTimeout(t)
+    this.disconnectTimers.clear()
+    this.state = null
+    this.savedPhaseBeforeQueue = null
+    // Keep everyone still in the lobby; bots stay ready.
+    this.lobbyPlayers = this.lobbyPlayers.map(p => ({ ...p, disconnected: false }))
+    this.broadcast('room:returned-to-lobby', {})
+    this.broadcastLobbyUpdate()
+  }
+
+  /** Rewrite a player's id everywhere when their socket id changes on reconnect. */
+  private reassignPlayerId(oldId: string, newId: string): void {
+    const token = this.tokenByPlayer.get(oldId)
+    if (token) { this.tokenByPlayer.delete(oldId); this.tokenByPlayer.set(newId, token); this.playerByToken.set(token, newId) }
+    const t = this.disconnectTimers.get(oldId)
+    if (t) { this.disconnectTimers.delete(oldId); this.disconnectTimers.set(newId, t) }
+    if (this.hostId === oldId) this.hostId = newId
+    if (this.turnTimerPlayerId === oldId) this.turnTimerPlayerId = newId
+    this.lobbyPlayers = this.lobbyPlayers.map(p => p.id === oldId ? { ...p, id: newId } : p)
+    if (this.readyPlayers.has(oldId)) { this.readyPlayers.delete(oldId); this.readyPlayers.add(newId) }
+
+    const s = this.state
+    if (!s) return
+    if (s.hostId === oldId) s.hostId = newId
+    if (s.winnerId === oldId) s.winnerId = newId
+    s.players = s.players.map(p => p.id === oldId ? { ...p, id: newId } : p)
+    s.playerOrder = s.playerOrder.map(id => id === oldId ? newId : id)
+    s.properties = s.properties.map(pr => pr.ownerId === oldId ? { ...pr, ownerId: newId } : pr)
+    if (s.activeTrade) {
+      const tr = s.activeTrade
+      s.activeTrade = {
+        ...tr,
+        fromPlayerId: tr.fromPlayerId === oldId ? newId : tr.fromPlayerId,
+        toPlayerId: tr.toPlayerId === oldId ? newId : tr.toPlayerId,
+        confirmedBy: tr.confirmedBy.map(id => id === oldId ? newId : id),
+      }
+    }
+    if (s.auction) {
+      const a = s.auction
+      const bids: Record<string, number> = {}
+      for (const [k, v] of Object.entries(a.bids)) bids[k === oldId ? newId : k] = v
+      s.auction = {
+        ...a,
+        highestBidderId: a.highestBidderId === oldId ? newId : a.highestBidderId,
+        bids,
+        passedPlayers: a.passedPlayers.map(id => id === oldId ? newId : id),
+      }
+    }
   }
 
   // ─── Broadcasts ──────────────────────────────────────────────────────────

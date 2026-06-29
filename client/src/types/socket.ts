@@ -1,8 +1,10 @@
 import type { GameState, Player, DiceRoll, AuctionState, TradeOffer, GameCard, PlayerColor, PieceType, GameSettings } from './game'
 
 export interface ClientToServerEvents {
-  'room:create': (payload: { playerName: string; color: PlayerColor; piece: PieceType }) => void
-  'room:join': (payload: { roomCode: string; playerName: string; color: PlayerColor; piece: PieceType }) => void
+  'room:create': (payload: { playerName: string; color: PlayerColor; piece: PieceType; clientToken?: string }) => void
+  'room:join': (payload: { roomCode: string; playerName: string; color: PlayerColor; piece: PieceType; clientToken?: string }) => void
+  'room:rejoin': (payload: { roomCode: string; clientToken: string }) => void
+  'room:play-again': () => void
   'room:peek': (payload: { roomCode: string }) => void
   'room:leave': () => void
   'room:start-game': () => void
@@ -50,6 +52,9 @@ export interface ServerToClientEvents {
   'room:player-joined': (payload: { player: Player; gameState: GameState }) => void
   'room:player-left': (payload: { playerId: string; gameState: GameState }) => void
   'room:game-started': (payload: { gameState: GameState }) => void
+  'room:rejoined': (payload: { roomCode: string; gameState: GameState | null; lobbyPlayers: Array<{ id: string; name: string; color: string; piece: string; isBot: boolean; isReady: boolean; disconnected?: boolean }>; isHost: boolean; inGame: boolean }) => void
+  'room:rejoin-failed': (payload: Record<string, never>) => void
+  'room:returned-to-lobby': (payload: Record<string, never>) => void
   'room:lobby-update': (payload: { lobbyPlayers: Array<{ id: string; name: string; color: string; piece: string; isBot: boolean; isReady: boolean }>; allReady: boolean; hostId: string; settings?: GameSettings }) => void
   'room:settings-update': (payload: { settings: GameSettings }) => void
   'room:kicked': () => void

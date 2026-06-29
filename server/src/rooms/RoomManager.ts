@@ -12,45 +12,47 @@ export class RoomManager {
     this.io = io
   }
 
-  createRoom(socketId: string, name: string, color: string, piece: string): GameRoom {
+  createRoom(socketId: string, name: string, color: string, piece: string, token?: string): GameRoom {
     let code = generateRoomCode()
     while (this.rooms.has(code)) code = generateRoomCode()
 
     const room = new GameRoom(code, socketId, this.io)
-    room.addLobbyPlayer(socketId, name, color, piece)
+    room.onEmpty = () => this.deleteRoom(code)
+    room.addLobbyPlayer(socketId, name, color, piece, token)
     this.rooms.set(code, room)
     this.socketToRoom.set(socketId, code)
     logger.info(`Room created: ${code} by ${name}`)
     return room
   }
 
-  joinRoom(roomCode: string, socketId: string, name: string, color: string, piece: string): GameRoom | null {
+  joinRoom(roomCode: string, socketId: string, name: string, color: string, piece: string, token?: string): GameRoom | null {
     const room = this.rooms.get(roomCode.toUpperCase())
     if (!room) return null
     if (room.state) return null // game already started
     if (room.lobbyPlayers.length >= 6) return null
 
-    room.addLobbyPlayer(socketId, name, color, piece)
+    room.addLobbyPlayer(socketId, name, color, piece, token)
     this.socketToRoom.set(socketId, roomCode.toUpperCase())
     logger.info(`${name} joined room ${roomCode}`)
     return room
   }
 
-  leaveRoom(socketId: string): GameRoom | null {
-    const code = this.socketToRoom.get(socketId)
-    if (!code) return null
-    const room = this.rooms.get(code)
-    if (!room) return null
+  /** Map a (re)connected socket to a room without adding a new player. */
+  attachSocket(socketId: string, code: string): void {
+    this.socketToRoom.set(socketId, code.toUpperCase())
+  }
 
-    room.removeLobbyPlayer(socketId)
+  /** Forget a socket id (on disconnect/leave) without touching the room's players. */
+  detachSocket(socketId: string): void {
     this.socketToRoom.delete(socketId)
+  }
 
-    // Clean up empty rooms
-    if (room.lobbyPlayers.length === 0 && (!room.state || room.state.players.every(p => !p.isActive))) {
-      this.rooms.delete(code)
-      logger.info(`Room ${code} deleted (empty)`)
+  private deleteRoom(code: string): void {
+    this.rooms.delete(code.toUpperCase())
+    for (const [sid, c] of this.socketToRoom) {
+      if (c === code.toUpperCase()) this.socketToRoom.delete(sid)
     }
-    return room
+    logger.info(`Room ${code} deleted (empty)`)
   }
 
   getRoomBySocket(socketId: string): GameRoom | null {

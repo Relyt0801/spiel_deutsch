@@ -3,6 +3,7 @@ import { useUiStore } from '../../../store/uiStore'
 import { useGameStore } from '../../../store/gameStore'
 import { useSocketStore } from '../../../store/socketStore'
 import { getSocket } from '../../../socket/socketClient'
+import { clearSavedRoom } from '../../../socket/session'
 import { BOARD_SQUARES, PROPERTY_COLOR_HEX, COLOR_GROUPS } from '../../../config/boardData'
 import { EVENT_TITLES } from '../../../config/events'
 import { PLAYER_COLORS } from '../../../types/game'
@@ -786,33 +787,65 @@ interface WinnerModalProps {
 }
 
 function WinnerModal({ gameState, closeModal }: WinnerModalProps) {
+  const isHost = useSocketStore(s => s.isHost)
   const winner = gameState.players.find(p => p.id === gameState.winnerId)
+
+  // Leaderboard by total assets (cash + un-mortgaged property + buildings).
+  const assets = (p: GameState['players'][number]) => {
+    let total = p.money
+    for (const idx of p.properties) {
+      const sq = BOARD_SQUARES[idx]
+      const ps = gameState.properties[idx]
+      if (!sq || !ps) continue
+      if (!ps.isMortgaged) total += sq.price ?? 0
+      const hc = sq.houseCost ?? 0
+      total += ps.houses * hc + (ps.hotel ? hc * 5 : 0)
+    }
+    return total
+  }
   const sorted = [...gameState.players].sort((a, b) => {
     if (a.isBankrupt && !b.isBankrupt) return 1
     if (!a.isBankrupt && b.isBankrupt) return -1
-    return b.money - a.money
+    return assets(b) - assets(a)
   })
+  const medal = ['🥇', '🥈', '🥉']
+
+  const playAgain = () => { getSocket().emit('room:play-again'); closeModal() }
+  const toMenu = () => {
+    getSocket().emit('room:leave')
+    clearSavedRoom()
+    useGameStore.getState().clearGame()
+    useUiStore.getState().setAppPhase('menu')
+    closeModal()
+  }
 
   return (
     <div className={styles.winnerModal}>
       <div className={styles.winnerEmoji}>🏆</div>
       <h2 className={styles.winnerTitle}>{winner?.name} hat gewonnen!</h2>
-      <p className={styles.winnerText}>Herzlichen Glückwunsch! Das Remigianum Monopoly ist entschieden.</p>
+      <p className={styles.winnerText}>Endstand des Remigianum Monopoly:</p>
 
       <div className={styles.standings}>
         {sorted.map((p, rank) => (
-          <div key={p.id} className={`${styles.standingRow} ${p.isBankrupt ? styles.bankrupt : ''}`}>
-            <span className={styles.rank}>{rank + 1}.</span>
+          <div key={p.id} className={`${styles.standingRow} ${p.isBankrupt ? styles.bankrupt : ''} ${rank === 0 && !p.isBankrupt ? styles.standingTop : ''}`}>
+            <span className={styles.rank}>{!p.isBankrupt && medal[rank] ? medal[rank] : `${rank + 1}.`}</span>
             <div className={styles.standingDot} style={{ background: PLAYER_COLORS[p.color] || '#ccc' }} />
             <span className={styles.standingName}>{p.name}</span>
             <span className={styles.standingMoney}>
-              {p.isBankrupt ? '💸 Bankrott' : `${p.money.toLocaleString('de-DE')}€`}
+              {p.isBankrupt ? '💸 Bankrott' : `${assets(p).toLocaleString('de-DE')}€`}
             </span>
           </div>
         ))}
       </div>
 
-      <button className={styles.btnClose} onClick={closeModal}>Neues Spiel</button>
+      <div className={styles.btnRow}>
+        {isHost ? (
+          <button className={styles.btnBuy} onClick={playAgain}>🔁 Noch eine Runde</button>
+        ) : (
+          <span className={styles.smallText}>Warte auf den Host für eine neue Runde…</span>
+        )}
+        <button className={styles.btnEnd} onClick={toMenu}>🏠 Hauptmenü</button>
+      </div>
     </div>
   )
 }

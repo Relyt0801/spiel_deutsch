@@ -274,7 +274,7 @@ export function Board2D() {
                   {players.map((p, i) => (
                     <div key={p.id} className={`${styles.playerRow} ${i === gameState.currentPlayerIndex ? styles.playerActive : ''} ${p.isBankrupt ? styles.playerBankrupt : ''}`}>
                       <div className={styles.playerDot} style={{ background: PLAYER_COLORS[p.color as keyof typeof PLAYER_COLORS] || '#888' }} />
-                      <span className={styles.playerName}>{p.name}{p.id === myId ? ' (Du)' : ''}</span>
+                      <span className={styles.playerName}>{p.name}{p.id === myId ? ' (Du)' : ''}{p.disconnected ? ' 🔌' : ''}</span>
                       <span className={styles.playerMoney}>💰 {p.money.toLocaleString('de-DE')}€</span>
                     </div>
                   ))}

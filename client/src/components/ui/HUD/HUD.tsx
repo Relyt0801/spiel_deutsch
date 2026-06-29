@@ -3,6 +3,7 @@ import { useGameStore } from '../../../store/gameStore'
 import { useSocketStore } from '../../../store/socketStore'
 import { useUiStore } from '../../../store/uiStore'
 import { getSocket } from '../../../socket/socketClient'
+import { clearSavedRoom } from '../../../socket/session'
 import { PLAYER_COLORS } from '../../../types/game'
 import { BOARD_SQUARES } from '../../../config/boardData'
 import { MyPropertiesPanel } from './MyPropertiesPanel'
@@ -43,6 +44,13 @@ export function HUD() {
 
   const handleRoll = () => getSocket().emit('game:roll-dice')
   const handleEndTurn = () => getSocket().emit('game:end-turn')
+  const handleLeave = () => {
+    if (!window.confirm('Spiel wirklich verlassen? Du wirst sofort entfernt.')) return
+    getSocket().emit('room:leave')
+    clearSavedRoom()
+    useGameStore.getState().clearGame()
+    useUiStore.getState().setAppPhase('menu')
+  }
 
   const myPlayer = gameState.players.find(p => p.id === myId)
   const canDeclareBankruptcy = isMyTurn && phase === 'end_turn' && myPlayer && !myPlayer.isBankrupt
@@ -110,7 +118,7 @@ export function HUD() {
               className={`${styles.mobileChip} ${i === gameState.currentPlayerIndex ? styles.mobileChipActive : ''} ${p.isBankrupt ? styles.mobileChipBankrupt : ''}`}
             >
               <div className={styles.mobileChipDot} style={{ background: PLAYER_COLORS[p.color] || '#888' }} />
-              <span className={styles.mobileChipName}>{p.name}{p.id === myId ? ' ✓' : ''}</span>
+              <span className={styles.mobileChipName}>{p.name}{p.id === myId ? ' ✓' : ''}{p.disconnected ? ' 🔌' : ''}</span>
               <span className={styles.mobileChipMoney}>{p.money.toLocaleString('de-DE')}€</span>
             </div>
           ))}
@@ -186,6 +194,7 @@ export function HUD() {
               💸 Bankrott erklären
             </button>
           )}
+          <button className={styles.btnLeave} onClick={handleLeave}>🚪 Verlassen</button>
         </div>
       )}
 

@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { useGameStore } from '../../../store/gameStore'
 import { useSocketStore } from '../../../store/socketStore'
+import { useUiStore } from '../../../store/uiStore'
 import { getSocket } from '../../../socket/socketClient'
+import { clearSavedRoom } from '../../../socket/session'
 import { PLAYER_COLORS } from '../../../types/game'
 import type { BankruptcyMode, GameSettings } from '../../../types/game'
 import styles from './Lobby.module.css'
@@ -41,6 +43,12 @@ export function Lobby() {
   const handleToggleReady = () => getSocket().emit('room:toggle-ready')
   const handleAddBot = () => getSocket().emit('room:add-bot')
   const handleKick = (playerId: string) => getSocket().emit('room:kick-player', { playerId })
+  const handleLeave = () => {
+    getSocket().emit('room:leave')
+    clearSavedRoom()
+    useGameStore.getState().clearGame()
+    useUiStore.getState().setAppPhase('menu')
+  }
 
   return (
     <div className={styles.container}>
@@ -49,8 +57,16 @@ export function Lobby() {
           <h1 className={styles.title}>🏫 Remigianum Monopoly</h1>
           <div className={styles.codeBox}>
             <span className={styles.codeLabel}>Raum-Code</span>
-            <span className={styles.code}>{roomCode}</span>
-            <span className={styles.codeHint}>Teile diesen Code mit deinen Mitspielern</span>
+            <span
+              className={styles.code}
+              title="Klicken zum Kopieren"
+              onClick={() => {
+                if (roomCode) navigator.clipboard?.writeText(roomCode).catch(() => {})
+                useUiStore.getState().setNotice('📋 Raum-Code kopiert!')
+                setTimeout(() => useUiStore.getState().setNotice(null), 2000)
+              }}
+            >{roomCode}</span>
+            <span className={styles.codeHint}>Tippe den Code zum Kopieren · teile ihn mit Mitspielern</span>
           </div>
         </div>
 
@@ -68,16 +84,18 @@ export function Lobby() {
             const color = PLAYER_COLORS[p.color as keyof typeof PLAYER_COLORS] ?? '#999'
             const isBot = (p as any).isBot ?? false
             const isReady = (p as any).isReady ?? false
+            const isDisconnected = (p as any).disconnected ?? false
             const isMe = p.id === myId
             const isHostPlayer = isHost && isMe || gameState?.hostId === p.id
 
             return (
-              <div key={p.id} className={`${styles.playerRow} ${isMe ? styles.playerRowMe : ''}`}>
+              <div key={p.id} className={`${styles.playerRow} ${isMe ? styles.playerRowMe : ''} ${isDisconnected ? styles.playerRowOffline : ''}`}>
                 <div className={styles.colorDot} style={{ background: color }} />
                 <span className={styles.playerName}>
                   {p.name}
                   {isMe && <span className={styles.you}> (Du)</span>}
                 </span>
+                {isDisconnected && <span className={styles.offlineBadge}>🔌 wieder verbinden…</span>}
                 {isHostPlayer && <span className={styles.hostBadge}>👑</span>}
                 {isBot
                   ? <span className={styles.botBadge}>🤖</span>
@@ -201,6 +219,7 @@ export function Lobby() {
               </p>
             </>
           )}
+          <button className={styles.leaveBtn} onClick={handleLeave}>🚪 Raum verlassen</button>
         </div>
       </div>
     </div>

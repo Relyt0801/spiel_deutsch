@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { connectSocket } from '../../../socket/socketClient'
 import { registerSocketHandlers } from '../../../socket/socketHandlers'
+import { getClientToken } from '../../../socket/session'
 import { useSocketStore } from '../../../store/socketStore'
 import { useUiStore } from '../../../store/uiStore'
 import { getSocket } from '../../../socket/socketClient'
@@ -27,17 +28,17 @@ export function StartMenu() {
 
   useEffect(() => {
     connectSocket()
-    registerSocketHandlers()
-    useSocketStore.getState().setConnectionStatus('connecting')
+    registerSocketHandlers() // connection status is handled inside (guarded once)
+    if (getSocket().connected) useSocketStore.getState().setConnectionStatus('connected')
+    else useSocketStore.getState().setConnectionStatus('connecting')
     const socket = getSocket()
-    socket.on('connect', () => useSocketStore.getState().setConnectionStatus('connected'))
-    socket.on('disconnect', () => useSocketStore.getState().setConnectionStatus('disconnected'))
-    socket.on('room:peek-result', ({ takenPieces: tp, takenColors: tc }) => {
+    const onPeek = ({ takenPieces: tp, takenColors: tc }: { takenPieces: string[]; takenColors: string[] }) => {
       setTakenPieces(tp)
       setTakenColors(tc)
-    })
+    }
+    socket.on('room:peek-result', onPeek)
     return () => {
-      socket.off('room:peek-result')
+      socket.off('room:peek-result', onPeek)
     }
   }, [])
 
@@ -63,14 +64,14 @@ export function StartMenu() {
   const handleCreate = () => {
     if (!name.trim()) { setError('Bitte Namen eingeben.'); return }
     setError(null)
-    getSocket().emit('room:create', { playerName: name.trim(), color, piece })
+    getSocket().emit('room:create', { playerName: name.trim(), color, piece, clientToken: getClientToken() })
   }
 
   const handleJoin = () => {
     if (!name.trim()) { setError('Bitte Namen eingeben.'); return }
     if (!roomCode.trim()) { setError('Bitte Raum-Code eingeben.'); return }
     setError(null)
-    getSocket().emit('room:join', { roomCode: roomCode.trim().toUpperCase(), playerName: name.trim(), color, piece })
+    getSocket().emit('room:join', { roomCode: roomCode.trim().toUpperCase(), playerName: name.trim(), color, piece, clientToken: getClientToken() })
   }
 
   return (
