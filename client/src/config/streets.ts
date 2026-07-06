@@ -46,7 +46,7 @@ export const STREETS_BY_COLOR: Record<StreetColor, StreetDef[]> = {
   ],
   pink: [
     { boardIndex: 11, name: 'S(Y)LT',            color: 'pink', kind: 'property', positionInColor: 1, price: 140, houseCost: 100, mortgage: 70, rent: [10, 50, 150, 450, 625, 750] },
-    { boardIndex: 13, name: 'Käsepalast',        color: 'pink', kind: 'property', positionInColor: 2, price: 140, houseCost: 100, mortgage: 70, rent: [10, 50, 150, 450, 625, 750] },
+    { boardIndex: 13, name: 'Kaffee-Küche',        color: 'pink', kind: 'property', positionInColor: 2, price: 140, houseCost: 100, mortgage: 70, rent: [10, 50, 150, 450, 625, 750] },
     { boardIndex: 14, name: "Schlettert's Tee",  color: 'pink', kind: 'property', positionInColor: 3, price: 160, houseCost: 100, mortgage: 80, rent: [12, 60, 180, 500, 700, 900] },
   ],
   orange: [

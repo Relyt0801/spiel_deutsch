@@ -95,7 +95,7 @@ export function setupSocketHandlers(io: Server): void {
     socket.on('room:add-bot', () => {
       const room = roomManager.getRoomBySocket(socket.id)
       if (!room || room.hostId !== socket.id) return
-      if (room.lobbyPlayers.length >= 6) {
+      if (room.lobbyPlayers.length >= 8) {
         socket.emit('room:error', { message: 'Maximale Spielerzahl erreicht.' })
         return
       }

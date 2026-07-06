@@ -9,8 +9,8 @@ import type { PlayerColor, PieceType } from '../../../types/game'
 import { PLAYER_COLORS } from '../../../types/game'
 import styles from './StartMenu.module.css'
 
-const PIECES: PieceType[] = ['Radiergummi', 'Lineal', 'Bleistift', 'Spitzer', 'Tintenfüller', 'Buch']
-const COLORS: PlayerColor[] = ['red', 'blue', 'green', 'yellow', 'purple', 'orange']
+const PIECES: PieceType[] = ['Radiergummi', 'Lineal', 'Bleistift', 'Spitzer', 'Tintenfüller', 'Buch', 'Schere', 'Globus']
+const COLORS: PlayerColor[] = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan']
 
 export function StartMenu() {
   const [name, setName] = useState('')

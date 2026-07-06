@@ -327,7 +327,7 @@ function CardModal({ data, closeModal }: CardModalProps) {
   return (
     <div className={styles.cardModal}>
       <div className={styles.cardHeader} style={{ background: isChance ? '#d97706' : '#2563eb' }}>
-        {isChance ? '❓ Stundenplanwechsel' : '📋 Klassenbuch'}
+        {isChance ? '⚡ Ereignis' : '📋 Klassenbuch'}
       </div>
       {title && <div className={styles.cardTitle}>{title}</div>}
       <div className={styles.cardText}>{card.text}</div>
@@ -441,6 +441,10 @@ function AuctionModal({ myId, gameState }: AuctionModalProps) {
           )
         })}
       </div>
+
+      {!alreadyPassed && me && me.money < minBid && (
+        <p className={styles.warnHint}>💸 Zu wenig Geld zum Mitbieten (du hast {me.money.toLocaleString('de-DE')}€). Du kannst nur passen.</p>
+      )}
 
       {!alreadyPassed && me && (
         <>

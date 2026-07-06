@@ -70,9 +70,9 @@ export class GameRoom {
   }
 
   addBot(): void {
-    if (this.lobbyPlayers.length >= 6) return
-    const botColors = ['red', 'blue', 'green', 'yellow', 'purple', 'orange']
-    const botPieces = ['Radiergummi', 'Lineal', 'Bleistift', 'Spitzer', 'Tintenfüller', 'Buch']
+    if (this.lobbyPlayers.length >= 8) return
+    const botColors = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan']
+    const botPieces = ['Radiergummi', 'Lineal', 'Bleistift', 'Spitzer', 'Tintenfüller', 'Buch', 'Schere', 'Globus']
     const takenColors = this.lobbyPlayers.map(p => p.color)
     const takenPieces = this.lobbyPlayers.map(p => p.piece)
     const color = botColors.find(c => !takenColors.includes(c)) ?? 'blue'
