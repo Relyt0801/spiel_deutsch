@@ -9,7 +9,7 @@ export const CHANCE_CARDS: GameCard[] = [
   { id: 'C4',  text: 'Du hast den 1. Platz im Känguru-Wettbewerb erreicht! Ziehe 100 ein.', action: 'COLLECT', amount: 100 },
   { id: 'C5',  text: 'Deine Großeltern sind stolz auf dein Zeugnis und geben dir Zeugnisgeld. Ziehe 200 ein.', action: 'COLLECT', amount: 200 },
   { id: 'C6',  text: 'Du bist aufgrund Fehlverhaltens negativ aufgefallen. Gehe sofort in den Bildungsbunker und gehe nicht über Los.', action: 'GO_TO_JAIL' },
-  { id: 'C7',  text: 'Du bist versetzungsgefährdet! Würfel 3 Mal, wenn du einen Pasch würfelst, bekommst du die 1! Ansonsten gehe sofort in den Bildungsbunker und gehe nicht über Los.', action: 'GO_TO_JAIL' },
+  { id: 'C7',  text: 'Du bist versetzungsgefährdet! Würfel bis zu 3 Mal – würfelst du einen Pasch, bist du gerettet! Ansonsten gehe sofort in den Bildungsbunker und gehe nicht über Los.', action: 'ROLL_OR_JAIL' },
   { id: 'C8',  text: 'Ihr genießt einen leckeren Tee und die Zeit vergeht wie im Flug. Rücke 3 Felder vor.', action: 'MOVE_FORWARD', amount: 3 },
   { id: 'C9',  text: 'ChatGPT hat dich durch das Schuljahr gecarried! Rücke vor bis auf Los.', action: 'ADVANCE_TO_GO' },
   { id: 'C10', text: 'Der Lehrer beobachtet, was ihr auf euren I-Pads macht. Würfelt der Reihe nach. Wenn du über 10 würfelst, erhälst du 100. Sonst zahle 100 in die Freistunde.', action: 'CLASSROOM_GAMBLE', amount: 100 },
@@ -30,4 +30,5 @@ export const CHANCE_CARDS: GameCard[] = [
   { id: 'C25', text: 'Du wurdest gegen deinen Willen von deinen Freunden als Klassensprecher vorgeschlagen. Als Rache klaust du deren Pausengeld. Du erhälst von jedem Spieler 25.', action: 'COLLECT_FROM_PLAYERS', amount: 25 },
   { id: 'C26', text: 'Frau Schlettert lädt dich zum Tee-Trinken ein. Du bist erneut am Zug.', action: 'EXTRA_TURN' },
   { id: 'C27', text: 'Du hast ein cooles Spielzeug, welches du 3D-Drucken möchtest. Rücke vor bis zum Makerspace.', action: 'ADVANCE_TO', target: 12 },
+  { id: 'C28', text: 'Untis zeigt an, dass du und dein Freund kurzfristig die Klassenräume tauscht. Wähle einen Mitspieler aus, mit dem du den Platz wechseln möchtest.', action: 'SWAP_POSITION' },
 ]

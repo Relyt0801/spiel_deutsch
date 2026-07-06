@@ -29,6 +29,20 @@ export function Modals() {
     )
   }
 
+  // Interactive cards (choose a player / roll dice) are driven off game state.
+  if (gameState && gameState.pendingCardAction &&
+      (gameState.gamePhase === 'card_target' || gameState.gamePhase === 'card_roll')) {
+    return (
+      <div className={styles.overlay}>
+        <div className={styles.modal}>
+          {gameState.gamePhase === 'card_target'
+            ? <CardTargetModal gameState={gameState} myId={myId} />
+            : <CardRollModal gameState={gameState} myId={myId} />}
+        </div>
+      </div>
+    )
+  }
+
   if (!activeModal || !gameState) return null
 
   const isWide = activeModal === 'trade'
@@ -586,6 +600,79 @@ function DebtModal({ gameState, myId }: { gameState: GameState; myId: string | n
   )
 }
 
+// ─── Interactive cards (target picker / dice roll) ──────────────────────────────
+
+function CardTargetModal({ gameState, myId }: { gameState: GameState; myId: string | null }) {
+  const pca = gameState.pendingCardAction!
+  const current = gameState.players[gameState.currentPlayerIndex]
+  const isMe = current?.id === myId
+  const opponents = gameState.players.filter(p => p.id !== current?.id && p.isActive && !p.isBankrupt)
+  const deck = pca.type === 'community' ? 'Klassenbuch' : 'Stundenplanwechsel'
+  const pick = (targetId: string) => getSocket().emit('game:card-choose-target', { targetId })
+
+  return (
+    <div>
+      <h2 className={styles.modalTitle}>🎴 {deck}</h2>
+      <p className={styles.auctionProp}>{pca.text}</p>
+      {isMe ? (
+        <>
+          <p className={styles.warnHint}>{pca.prompt}</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', margin: '10px 0' }}>
+            {opponents.length === 0 && <p className={styles.smallText}>Keine Mitspieler verfügbar.</p>}
+            {opponents.map(p => (
+              <button key={p.id} className={styles.btnBuy}
+                style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-start' }}
+                onClick={() => pick(p.id)}>
+                <span style={{ width: 12, height: 12, borderRadius: '50%', flexShrink: 0, background: PLAYER_COLORS[p.color] || '#888' }} />
+                {p.name}{p.isBot ? ' 🤖' : ''} · 💰 {p.money.toLocaleString('de-DE')}€
+              </button>
+            ))}
+          </div>
+        </>
+      ) : (
+        <p className={styles.smallText}>{current?.name} wählt einen Mitspieler aus…</p>
+      )}
+    </div>
+  )
+}
+
+function CardRollModal({ gameState, myId }: { gameState: GameState; myId: string | null }) {
+  const pca = gameState.pendingCardAction!
+  const current = gameState.players[gameState.currentPlayerIndex]
+  const isMe = current?.id === myId
+  const deck = pca.type === 'community' ? 'Klassenbuch' : 'Stundenplanwechsel'
+  const last = pca.lastRoll
+  const resolved = (pca as { resolved?: boolean }).resolved
+  const resultText = (pca as { resultText?: string }).resultText
+  const roll = () => getSocket().emit('game:card-roll')
+
+  return (
+    <div>
+      <h2 className={styles.modalTitle}>🎲 {deck}</h2>
+      <p className={styles.auctionProp}>{pca.text}</p>
+
+      {last && (
+        <div className={styles.diceResult} style={{ textAlign: 'center', fontSize: '1.4rem', margin: '12px 0' }}>
+          🎲 {last.die1} + {last.die2} = <strong>{last.total}</strong>
+          {last.die1 === last.die2 && <span className={styles.double}> Pasch!</span>}
+        </div>
+      )}
+      {!resolved && pca.action === 'ROLL_OR_JAIL' && pca.rollsLeft != null && (
+        <p className={styles.warnHint}>Noch {pca.rollsLeft} Versuch(e) auf einen Pasch.</p>
+      )}
+      {resolved && resultText && <p className={styles.warnHint}>{resultText}</p>}
+
+      {isMe ? (
+        <button className={styles.btnBuy} onClick={roll}>
+          {resolved ? '➡️ Weiter' : '🎲 Würfeln'}
+        </button>
+      ) : (
+        <p className={styles.smallText}>{current?.name} {resolved ? 'schaut sich das Ergebnis an…' : 'würfelt…'}</p>
+      )}
+    </div>
+  )
+}
+
 // ─── Trade ────────────────────────────────────────────────────────────────────
 
 interface TradeModalProps {
@@ -797,6 +884,9 @@ function TradeModal({ myId, gameState, closeModal }: TradeModalProps) {
     dGiveM === myGiveMoney && dGetM === myGetMoney
   )
   const draftHasContent = dGive.length > 0 || dGet.length > 0 || dGiveM > 0 || dGetM > 0
+  // Net cash I'd pay for the CURRENT offer – can't confirm if it would put me below 0 €.
+  const myNetPay = myGiveMoney - myGetMoney
+  const canAffordTrade = (me?.money ?? 0) >= myNetPay
 
   const sendCounter = () => {
     getSocket().emit('trade:counter', {
@@ -852,6 +942,12 @@ function TradeModal({ myId, gameState, closeModal }: TradeModalProps) {
             </div>
           )}
 
+          {!draftChanged && !canAffordTrade && (
+            <div className={styles.tradeWaiting}>
+              💸 Du hast nur {(me?.money ?? 0).toLocaleString('de-DE')}€ – die geforderten
+              {' '}{myNetPay.toLocaleString('de-DE')}€ kannst du nicht zahlen. Ändere das Angebot oder brich ab.
+            </div>
+          )}
           <div className={styles.btnRow}>
             {draftChanged ? (
               <button className={styles.btnBuy} disabled={!draftHasContent} onClick={sendCounter}>
@@ -862,7 +958,7 @@ function TradeModal({ myId, gameState, closeModal }: TradeModalProps) {
                 ⏳ Warte auf {otherPlayer?.name}…
               </button>
             ) : (
-              <button className={styles.btnBuy} onClick={confirm}>
+              <button className={styles.btnBuy} disabled={!canAffordTrade} onClick={confirm}>
                 ✅ Tausch bestätigen
               </button>
             )}

@@ -73,6 +73,7 @@ export type GamePhase =
   | 'lobby' | 'rolling' | 'moving' | 'landed' | 'buying'
   | 'auctioning' | 'paying_rent' | 'card_drawn' | 'jail_decision'
   | 'trading' | 'building' | 'end_turn' | 'game_over' | 'debt_settlement'
+  | 'card_target' | 'card_roll'
 
 /** An open debt the current player must cover by selling/mortgaging before continuing. */
 export interface DebtInfo {
@@ -768,32 +769,87 @@ export function applyCardEffect(state: GameState, playerId: string): GameState {
       break
     }
     case 'COLLECT_FROM_ONE': {
-      const amt = card.amount!
+      const amt = card.amount ?? 100
       const opponents = s.players.filter(p => p.id !== playerId && p.isActive && !p.isBankrupt)
-      if (opponents.length > 0) {
+      if (opponents.length === 0) break
+      if (player.isBot || player.disconnected) {
         const richest = opponents.reduce((a, b) => (b.money > a.money ? b : a))
-        const paid = Math.min(amt, richest.money)
-        s.players = s.players.map(p =>
-          p.id === playerId ? { ...p, money: p.money + paid }
-            : p.id === richest.id ? { ...p, money: p.money - paid } : p
-        )
-        s = addLog(s, `${player.name}: Karte – erhält ${paid}€ von ${richest.name}.`, 'success')
+        return resolveCollectFromOne(s, playerId, richest.id, amt)
       }
-      break
+      // Connected human → let them pick a player in a menu.
+      return {
+        ...s,
+        pendingCardAction: {
+          id: card.id, type: (state.pendingCardAction as Record<string, unknown>).type,
+          text: card.text, interaction: 'choose_target', action: 'COLLECT_FROM_ONE', amount: amt,
+          prompt: `Wähle einen Mitspieler, von dem du ${amt}€ erhältst.`,
+        },
+        gamePhase: 'card_target',
+      }
+    }
+    case 'SWAP_POSITION': {
+      const opponents = s.players.filter(p => p.id !== playerId && p.isActive && !p.isBankrupt)
+      if (opponents.length === 0) break
+      if (player.isBot || player.disconnected) {
+        const target = opponents[Math.floor(Math.random() * opponents.length)]
+        return resolveSwapPosition(s, playerId, target.id)
+      }
+      return {
+        ...s,
+        pendingCardAction: {
+          id: card.id, type: (state.pendingCardAction as Record<string, unknown>).type,
+          text: card.text, interaction: 'choose_target', action: 'SWAP_POSITION',
+          prompt: 'Wähle einen Mitspieler, mit dem du den Platz tauschst.',
+        },
+        gamePhase: 'card_target',
+      }
     }
     case 'CLASSROOM_GAMBLE': {
       const amt = card.amount ?? 100
-      const total = (Math.floor(Math.random() * 6) + 1) + (Math.floor(Math.random() * 6) + 1)
-      if (total > 10) {
-        s.players = s.players.map((p, i) => i === pIdx ? { ...p, money: p.money + amt } : p)
-        s = addLog(s, `${player.name}: Würfelt ${total} (>10) – erhält ${amt}€!`, 'success')
-      } else {
+      if (player.isBot || player.disconnected) {
+        const r = rollDice()
+        if (r.total > 10) {
+          s.players = s.players.map((p, i) => i === pIdx ? { ...p, money: p.money + amt } : p)
+          s = addLog(s, `${player.name}: würfelt ${r.total} (>10) – erhält ${amt}€!`, 'success')
+          return { ...s, gamePhase: 'end_turn' }
+        }
         const res = payToBank(s, playerId, amt, true)
         s = res.state
         if (res.bankrupt) return s
-        s = addLog(s, `${player.name}: Würfelt ${total} (≤10) – zahlt ${amt}€ in die Freie Pause.`, 'warning')
+        s = addLog(s, `${player.name}: würfelt ${r.total} (≤10) – zahlt ${amt}€ in die Freie Pause.`, 'warning')
+        return { ...s, gamePhase: 'end_turn' }
       }
-      break
+      return {
+        ...s,
+        pendingCardAction: {
+          id: card.id, type: (state.pendingCardAction as Record<string, unknown>).type,
+          text: card.text, interaction: 'roll', action: 'CLASSROOM_GAMBLE', amount: amt, rolls: [],
+          prompt: `Würfle: mehr als 10 → +${amt}€, sonst zahlst du ${amt}€.`,
+        },
+        gamePhase: 'card_roll',
+      }
+    }
+    case 'ROLL_OR_JAIL': {
+      if (player.isBot || player.disconnected) {
+        for (let i = 0; i < 3; i++) {
+          const r = rollDice()
+          if (r.isDouble) {
+            s = addLog(s, `${player.name}: Pasch (${r.die1}+${r.die2}) gewürfelt – gerettet!`, 'success')
+            return { ...s, gamePhase: 'end_turn' }
+          }
+        }
+        s = addLog(s, `${player.name}: kein Pasch – ab in den Bildungsbunker.`, 'warning')
+        return sendToJail(s, playerId)
+      }
+      return {
+        ...s,
+        pendingCardAction: {
+          id: card.id, type: (state.pendingCardAction as Record<string, unknown>).type,
+          text: card.text, interaction: 'roll', action: 'ROLL_OR_JAIL', rollsLeft: 3, rolls: [],
+          prompt: 'Würfle bis zu 3× – bei einem Pasch bist du gerettet.',
+        },
+        gamePhase: 'card_roll',
+      }
     }
     case 'SKIP_TURN': {
       s.players = s.players.map((p, i) => i === pIdx ? { ...p, skipTurns: p.skipTurns + 1 } : p)
@@ -809,6 +865,99 @@ export function applyCardEffect(state: GameState, playerId: string): GameState {
   // End the player's action; the normal end-turn flow then handles doubles re-rolls.
   s.gamePhase = 'end_turn'
   return s
+}
+
+// ─── Interactive card resolution (target picker / dice roll) ──────────────────
+
+/** Collector takes up to `amt` € from the chosen player. */
+function resolveCollectFromOne(state: GameState, collectorId: string, targetId: string, amt: number): GameState {
+  let s: GameState = { ...state, pendingCardAction: null }
+  const target = s.players.find(p => p.id === targetId)
+  const collector = s.players.find(p => p.id === collectorId)
+  const paid = Math.min(amt, target?.money ?? 0)
+  s.players = s.players.map(p =>
+    p.id === collectorId ? { ...p, money: p.money + paid }
+      : p.id === targetId ? { ...p, money: p.money - paid } : p)
+  s = addLog(s, `${collector?.name}: Karte – erhält ${paid}€ von ${target?.name}.`, 'success')
+  return { ...s, gamePhase: 'end_turn' }
+}
+
+/** "Raumvertretung": the two players swap board positions (no landing effect). */
+function resolveSwapPosition(state: GameState, aId: string, bId: string): GameState {
+  let s: GameState = { ...state, pendingCardAction: null }
+  const a = s.players.find(p => p.id === aId)
+  const b = s.players.find(p => p.id === bId)
+  if (!a || !b) return { ...s, gamePhase: 'end_turn' }
+  const aPos = a.position
+  const bPos = b.position
+  s.players = s.players.map(p =>
+    p.id === aId ? { ...p, position: bPos } : p.id === bId ? { ...p, position: aPos } : p)
+  s = addLog(s, `${a.name} tauscht per Raumvertretung den Platz mit ${b.name}.`, 'info')
+  return { ...s, gamePhase: 'end_turn' }
+}
+
+/** Apply the current player's picked target for a 'choose_target' card. */
+export function resolveCardTarget(state: GameState, actorId: string, targetId: string): GameState {
+  const pca = state.pendingCardAction
+  if (!pca || pca.interaction !== 'choose_target') return state
+  const target = state.players.find(p => p.id === targetId)
+  if (!target || target.id === actorId || target.isBankrupt || !target.isActive) return state
+  const action = pca.action as string
+  if (action === 'COLLECT_FROM_ONE') return resolveCollectFromOne(state, actorId, targetId, (pca.amount as number) ?? 100)
+  if (action === 'SWAP_POSITION') return resolveSwapPosition(state, actorId, targetId)
+  return { ...state, pendingCardAction: null, gamePhase: 'end_turn' }
+}
+
+/**
+ * Perform one dice roll for a 'roll' card. Each roll stays on screen; once the card is
+ * decided it holds a `resolved` result until the player clicks "Weiter" (a final call
+ * with resolved=true finishes the turn) so it's always clear what just happened.
+ */
+export function performCardRoll(state: GameState): GameState {
+  const pca = state.pendingCardAction
+  if (!pca || pca.interaction !== 'roll') return state
+  let s = { ...state }
+  const player = s.players[s.currentPlayerIndex]
+  if (!player) return { ...s, pendingCardAction: null, gamePhase: 'end_turn' }
+  // "Weiter" after a decided card → finish.
+  if (pca.resolved) return { ...s, pendingCardAction: null, gamePhase: 'end_turn' }
+
+  const roll = rollDice()
+  const action = pca.action as string
+  const rolls = [...((pca.rolls as number[]) ?? []), roll.total]
+  const lastRoll = { die1: roll.die1, die2: roll.die2, total: roll.total }
+  const hold = (extra: Record<string, unknown>): GameState =>
+    ({ ...s, gamePhase: 'card_roll', pendingCardAction: { ...pca, rolls, lastRoll, ...extra } })
+
+  if (action === 'CLASSROOM_GAMBLE') {
+    const amt = (pca.amount as number) ?? 100
+    if (roll.total > 10) {
+      s.players = s.players.map(p => p.id === player.id ? { ...p, money: p.money + amt } : p)
+      s = addLog(s, `${player.name}: würfelt ${roll.die1}+${roll.die2}=${roll.total} (>10) – erhält ${amt}€!`, 'success')
+      return hold({ resolved: true, resultText: `${roll.total} (über 10) – du erhältst ${amt}€! 🎉` })
+    }
+    const res = payToBank(s, player.id, amt, true)
+    s = res.state
+    s = addLog(s, `${player.name}: würfelt ${roll.die1}+${roll.die2}=${roll.total} (≤10) – zahlt ${amt}€.`, 'warning')
+    if (res.bankrupt) return { ...s, pendingCardAction: null }
+    return hold({ resolved: true, resultText: `${roll.total} (10 oder weniger) – du zahlst ${amt}€.` })
+  }
+
+  if (action === 'ROLL_OR_JAIL') {
+    const rollsLeft = ((pca.rollsLeft as number) ?? 3) - 1
+    if (roll.isDouble) {
+      s = addLog(s, `${player.name}: Pasch (${roll.die1}+${roll.die2})! Gerettet.`, 'success')
+      return hold({ resolved: true, rollsLeft, resultText: `Pasch ${roll.die1}+${roll.die2} – du bist gerettet! 🎉` })
+    }
+    s = addLog(s, `${player.name}: würfelt ${roll.die1}+${roll.die2} – kein Pasch.` + (rollsLeft > 0 ? ` Noch ${rollsLeft} Versuch(e).` : ''), 'info')
+    if (rollsLeft <= 0) {
+      s = sendToJail(s, player.id)
+      s = addLog(s, `${player.name}: kein Pasch geschafft – ab in den Bildungsbunker!`, 'warning')
+      return hold({ resolved: true, rollsLeft: 0, resultText: `Kein Pasch – ab in den Bildungsbunker! 🚸` })
+    }
+    return hold({ rollsLeft })
+  }
+  return { ...s, pendingCardAction: null, gamePhase: 'end_turn' }
 }
 
 export function startAuction(state: GameState, propertyIndex: number): GameState {

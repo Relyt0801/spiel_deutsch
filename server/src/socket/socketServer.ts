@@ -95,7 +95,7 @@ export function setupSocketHandlers(io: Server): void {
     socket.on('room:add-bot', () => {
       const room = roomManager.getRoomBySocket(socket.id)
       if (!room || room.hostId !== socket.id) return
-      if (room.lobbyPlayers.length >= 9) {
+      if (room.lobbyPlayers.length >= 8) {
         socket.emit('room:error', { message: 'Maximale Spielerzahl erreicht.' })
         return
       }
@@ -153,6 +153,16 @@ export function setupSocketHandlers(io: Server): void {
     socket.on('game:card-acknowledge', () => {
       const room = roomManager.getRoomBySocket(socket.id)
       room?.handleCardAcknowledge(socket.id)
+    })
+
+    socket.on('game:card-choose-target', ({ targetId }) => {
+      const room = roomManager.getRoomBySocket(socket.id)
+      room?.handleCardChooseTarget(socket.id, targetId)
+    })
+
+    socket.on('game:card-roll', () => {
+      const room = roomManager.getRoomBySocket(socket.id)
+      room?.handleCardRoll(socket.id)
     })
 
     socket.on('game:jail-pay', () => {

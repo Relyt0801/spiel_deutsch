@@ -43,6 +43,8 @@ export interface ClientToServerEvents {
 
   'game:declare-bankruptcy': () => void
   'game:settle-debt': () => void
+  'game:card-choose-target': (payload: { targetId: string }) => void
+  'game:card-roll': () => void
 }
 
 export interface ServerToClientEvents {

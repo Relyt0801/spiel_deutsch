@@ -17,6 +17,8 @@ export type GamePhase =
   | 'end_turn'
   | 'game_over'
   | 'debt_settlement'
+  | 'card_target'
+  | 'card_roll'
 
 /** An open debt the current player must cover by selling/mortgaging before continuing. */
 export interface DebtInfo {
@@ -95,6 +97,20 @@ export interface GameCard {
   doubleRent?: boolean
 }
 
+/** Pending card that needs player input (target picker or dice roll). */
+export interface PendingCardAction {
+  id: string
+  type?: string
+  text?: string
+  interaction?: 'choose_target' | 'roll'
+  action?: string
+  amount?: number
+  prompt?: string
+  rolls?: number[]
+  rollsLeft?: number
+  lastRoll?: { die1: number; die2: number; total: number }
+}
+
 export interface GameLog {
   timestamp: number
   message: string
@@ -124,7 +140,7 @@ export interface GameState {
   playerOrder: string[]
   properties: PropertyState[]
   currentDiceRoll: DiceRoll | null
-  pendingCardAction: GameCard | null
+  pendingCardAction: PendingCardAction | null
   auction: AuctionState | null
   auctionQueue: number[]
   activeTrade: TradeOffer | null

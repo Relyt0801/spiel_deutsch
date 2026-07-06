@@ -65,6 +65,8 @@ export type EventAction =
   | 'EXTRA_TURN'
   | 'CLASSROOM_GAMBLE'
   | 'BUILDING_REPAIRS'
+  | 'ROLL_OR_JAIL'
+  | 'SWAP_POSITION'
 
 export interface EventCard {
   id: string
@@ -109,6 +111,7 @@ export const EVENT_CARDS: EventCard[] = [
   { id: 'C25', deck: 'chance', title: 'Klassensprecherwahl',               content: 'Du wurdest gegen deinen Willen von deinen Freunden als Klassensprecher vorgeschlagen. Als Rache klaust du deren Pausengeld. Du erhälst von jedem Spieler 25.', action: 'COLLECT_FROM_PLAYERS', amount: 25 },
   { id: 'C26', deck: 'chance', title: 'Tee-Stunde!',                       content: 'Frau Schlettert lädt dich zum Tee-Trinken ein. Du bist erneut am Zug.', action: 'EXTRA_TURN' },
   { id: 'C27', deck: 'chance', title: '3D – Drucker',                      content: 'Du hast ein cooles Spielzeug, welches du 3D-Drucken möchtest. Rücke vor bis zum Makerspace.', action: 'ADVANCE_TO', target: 12 },
+  { id: 'C28', deck: 'chance', title: 'Raumvertretung',                   content: 'Untis zeigt an, dass du und dein Freund kurzfristig die Klassenräume tauscht. Wähle einen Mitspieler aus, mit dem du den Platz wechseln möchtest.', action: 'SWAP_POSITION' },
 
   // ── Klassenbuch (community) – 16 Karten ──────────────────────────────────
   { id: 'K1',  deck: 'community', title: 'Zeugnis',           content: 'Zeugnis! Gehe zu Schulbeginn und erhalte 200€.',                              action: 'ADVANCE_TO_GO' },

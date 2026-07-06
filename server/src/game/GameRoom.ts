@@ -5,7 +5,7 @@ import {
   buyHouse, buyHotel, sellHouse, sellHotel, sellAllBuildings, mortgage, unmortgage, proposeTrade,
   counterTrade, confirmTrade,
   declareBankruptcy, handleEndTurn, advanceTurn, applyCardEffect, sendToJail,
-  settleDebt, forceSettleDebt, grossWorth,
+  settleDebt, forceSettleDebt, grossWorth, resolveCardTarget, performCardRoll,
   DEFAULT_SETTINGS,
 } from './GameEngine'
 import type { TradeOffer, DiceRoll, GameSettings, GamePhase } from './GameEngine'
@@ -76,7 +76,7 @@ export class GameRoom {
   }
 
   addBot(): void {
-    if (this.lobbyPlayers.length >= 9) return
+    if (this.lobbyPlayers.length >= 8) return
     const botColors = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan', 'brown']
     const botPieces = ['Radiergummi', 'Lineal', 'Bleistift', 'Spitzer', 'Tintenfüller', 'Buch', 'Schere', 'Globus', 'Taschenrechner']
     const takenColors = this.lobbyPlayers.map(p => p.color)
@@ -587,6 +587,16 @@ export class GameRoom {
     return until !== undefined && until > Date.now()
   }
 
+  /** Neither side of the trade may end up below 0 € after the net cash changes hands. */
+  private canAffordTrade(t: TradeOffer): boolean {
+    if (!this.state) return false
+    const from = this.state.players.find(p => p.id === t.fromPlayerId)
+    const to = this.state.players.find(p => p.id === t.toPlayerId)
+    if (!from || !to) return false
+    return from.money >= (t.offeredMoney - t.requestedMoney)
+      && to.money >= (t.requestedMoney - t.offeredMoney)
+  }
+
   /**
    * Build a flexible counter-offer for `botId` (the receiver of `trade`):
    * keeps streets it really wants, drops the ones it won't give, may add a spare
@@ -1018,6 +1028,18 @@ export class GameRoom {
         this.broadcastState()
         this.processAuctionQueue()
         break
+      case 'card_target': {
+        const opp = this.state.players.filter(p => p.id !== playerId && p.isActive && !p.isBankrupt)
+        this.state = opp.length
+          ? resolveCardTarget(this.state, playerId, opp[Math.floor(Math.random() * opp.length)].id)
+          : { ...this.state, pendingCardAction: null, gamePhase: 'end_turn' }
+        this.broadcastState()
+        break
+      }
+      case 'card_roll':
+        this.state = performCardRoll(this.state)
+        this.broadcastState()
+        break
       case 'end_turn': this.handleEndTurn(playerId); break
     }
   }
@@ -1178,6 +1200,28 @@ export class GameRoom {
         gameState: this.state,
       })
     }
+    if (this.state.gamePhase === 'game_over') {
+      this.broadcast('game:over', { winnerId: this.state.winnerId, gameState: this.state })
+    }
+    this.broadcastState()
+  }
+
+  /** Interactive card: current player picked a target (COLLECT_FROM_ONE / SWAP_POSITION). */
+  handleCardChooseTarget(socketId: string, targetId: string): void {
+    if (!this.state || this.state.gamePhase !== 'card_target') return
+    if (this.state.players[this.state.currentPlayerIndex]?.id !== socketId) return
+    this.state = resolveCardTarget(this.state, socketId, targetId)
+    this.broadcastState()
+  }
+
+  /** Interactive card: current player rolls the dice (CLASSROOM_GAMBLE / ROLL_OR_JAIL). */
+  handleCardRoll(socketId: string): void {
+    if (!this.state || this.state.gamePhase !== 'card_roll') return
+    if (this.state.players[this.state.currentPlayerIndex]?.id !== socketId) return
+    this.state = performCardRoll(this.state)
+    if (this.state.gamePhase === 'game_over') {
+      this.broadcast('game:over', { winnerId: this.state.winnerId, gameState: this.state })
+    }
     this.broadcastState()
   }
 
@@ -1256,6 +1300,18 @@ export class GameRoom {
     const active = this.state.activeTrade
     // Only the two trade partners may confirm.
     if (active.fromPlayerId !== socketId && active.toPlayerId !== socketId) return
+    // Would this confirmation seal the deal? Then make sure BOTH sides can actually pay –
+    // never let a trade push a player below 0 €.
+    const sealed = [...new Set([...active.confirmedBy, socketId])]
+    const wouldComplete = sealed.includes(active.fromPlayerId) && sealed.includes(active.toPlayerId)
+    if (wouldComplete && !this.canAffordTrade(active)) {
+      this.clearTradeTimer()
+      this.state = { ...this.state, activeTrade: null, gamePhase: 'end_turn' }
+      this.broadcast('trade:rejected', { trade: active, byId: null })
+      this.io.to(socketId).emit('room:error', { message: 'Handel geplatzt: nicht genug Geld für die geforderte Summe.' })
+      this.broadcastState()
+      return
+    }
     this.state = confirmTrade(this.state, socketId)
     if (!this.state.activeTrade) {
       // Trade went through → lock the streets that moved so bots don't undo it next turn.

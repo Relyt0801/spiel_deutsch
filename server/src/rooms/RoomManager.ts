@@ -29,7 +29,7 @@ export class RoomManager {
     const room = this.rooms.get(roomCode.toUpperCase())
     if (!room) return null
     if (room.state) return null // game already started
-    if (room.lobbyPlayers.length >= 9) return null
+    if (room.lobbyPlayers.length >= 8) return null
 
     room.addLobbyPlayer(socketId, name, color, piece, token)
     this.socketToRoom.set(socketId, roomCode.toUpperCase())
