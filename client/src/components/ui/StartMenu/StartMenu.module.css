@@ -149,6 +149,7 @@
 .pieceBtn.taken { opacity: 0.3; cursor: not-allowed; }
 .pieceBtn.taken:hover { border-color: rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); }
 .pieceBtn span { font-size: 0.65rem; opacity: 0.8; }
+.pieceBtn .pieceEmoji { font-size: 1.4rem; opacity: 1; line-height: 1; }
 
 .colorRow {
   display: flex;

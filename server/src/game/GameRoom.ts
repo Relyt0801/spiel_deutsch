@@ -48,6 +48,8 @@ export class GameRoom {
   private botAuctionVals: Record<string, number> = {}
   private botAuctionPending: Set<string> = new Set()
   private tradeCounterRounds = 0
+  /** propertyIndex → timestamp until which bots won't re-trade it (stops back-and-forth churn). */
+  private recentlyTraded: Map<number, number> = new Map()
   // Reconnect support: stable client token ⇄ current playerId, plus per-player grace timers.
   private tokenByPlayer: Map<string, string> = new Map()
   private playerByToken: Map<string, string> = new Map()
@@ -74,9 +76,9 @@ export class GameRoom {
   }
 
   addBot(): void {
-    if (this.lobbyPlayers.length >= 8) return
-    const botColors = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan']
-    const botPieces = ['Radiergummi', 'Lineal', 'Bleistift', 'Spitzer', 'Tintenfüller', 'Buch', 'Schere', 'Globus']
+    if (this.lobbyPlayers.length >= 9) return
+    const botColors = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan', 'brown']
+    const botPieces = ['Radiergummi', 'Lineal', 'Bleistift', 'Spitzer', 'Tintenfüller', 'Buch', 'Schere', 'Globus', 'Taschenrechner']
     const takenColors = this.lobbyPlayers.map(p => p.color)
     const takenPieces = this.lobbyPlayers.map(p => p.piece)
     const color = botColors.find(c => !takenColors.includes(c)) ?? 'blue'
@@ -562,6 +564,17 @@ export class GameRoom {
     return money + props.reduce((s, i) => s + this.propertyStrategicValue(botId, i), 0)
   }
 
+  private static readonly TRADE_COOLDOWN_MS = 60_000
+  /** Lock these streets from further bot trading for a while after they change hands. */
+  private markTraded(props: number[]): void {
+    const until = Date.now() + GameRoom.TRADE_COOLDOWN_MS
+    for (const i of props) this.recentlyTraded.set(i, until)
+  }
+  private isRecentlyTraded(i: number): boolean {
+    const until = this.recentlyTraded.get(i)
+    return until !== undefined && until > Date.now()
+  }
+
   /**
    * Build a flexible counter-offer for `botId` (the receiver of `trade`):
    * keeps streets it really wants, drops the ones it won't give, may add a spare
@@ -626,6 +639,8 @@ export class GameRoom {
       })
       // Want to grab the 1–2 missing streets, and only if a SINGLE opponent holds them all.
       if (needed.length === 0 || needed.length > 2) continue
+      // Don't chase a street that just changed hands (stops back-and-forth churn).
+      if (needed.some(i => this.isRecentlyTraded(i))) continue
       const owners = new Set(needed.map(i => this.state!.properties[i]?.ownerId))
       if (owners.size !== 1) continue
       const targetOwnerId = [...owners][0]!
@@ -641,10 +656,12 @@ export class GameRoom {
       if (target.money > 1200) factor += 0.25
       let offerMoney = Math.floor(totalPrice * factor)
 
-      // Sometimes sweeten with a spare street so it isn't pure cash.
+      // Sometimes sweeten with a spare street so it isn't pure cash – but never one from
+      // the colour we're trying to complete, and never a freshly-traded street.
       const offeredProps: number[] = []
       const spare = bot.properties.find(i =>
-        this.isSpareProperty(botId, i) && !this.state!.properties[i]?.houses && !this.state!.properties[i]?.hotel)
+        this.isSpareProperty(botId, i) && BOARD_SQUARES[i]?.group !== group && !this.isRecentlyTraded(i) &&
+        !this.state!.properties[i]?.houses && !this.state!.properties[i]?.hotel)
       if (spare !== undefined && Math.random() < 0.45) {
         offeredProps.push(spare)
         offerMoney = Math.max(0, offerMoney - Math.floor((BOARD_SQUARES[spare]?.price ?? 0) * 0.6))
@@ -653,6 +670,8 @@ export class GameRoom {
       // Keep a safety reserve.
       if (bot.money - offerMoney < 150) offerMoney = bot.money - 150
       if (offerMoney < 0) continue
+      // Never offer literally nothing for a street (the other side would just reject).
+      if (offeredProps.length === 0 && offerMoney <= 0) continue
 
       const score = needed.reduce((s, i) => s + this.propertyStrategicValue(botId, i), 0) - offerMoney * 0.3
       candidates.push({
@@ -709,6 +728,10 @@ export class GameRoom {
       const losesCashForNothing = cashOut > 0 && getProps.recv.length === 0
       const givesProtectedSet = getProps.give.some(i => this.isProtectedSetProperty(botId, i))
       const reserveOk = bot.money - Math.max(0, cashOut) >= 120
+      // A no-op trade (no streets either way and no net cash) must never be confirmed.
+      const nothingMoves = getProps.recv.length + getProps.give.length === 0 && cashOut === 0
+      // Don't churn: refuse trades touching a street that just changed hands.
+      const touchesRecent = [...getProps.recv, ...getProps.give].some(i => this.isRecentlyTraded(i))
       // Accept only when the total value coming back is fair-or-better (small random margin).
       // (Set-completing streets are already valued ~2.4× by bundleValue, so the bot will
       //  still pay a premium for them — but it won't accept a plain money loss.)
@@ -716,7 +739,9 @@ export class GameRoom {
 
       const canCounter = !botIsFrom && this.tradeCounterRounds < 5
 
-      if (fair && reserveOk && !losesCashForNothing && !givesProtectedSet) {
+      if (nothingMoves || touchesRecent) {
+        this.handleRejectTrade(botId, tradeId)
+      } else if (fair && reserveOk && !losesCashForNothing && !givesProtectedSet) {
         this.handleConfirmTrade(botId, tradeId)
       } else if (canCounter && ratio >= 0.15 && !losesCashForNothing) {
         // Not completely off → make a flexible counter rather than flatly rejecting.
@@ -782,7 +807,8 @@ export class GameRoom {
   private scheduleBotAuctionEval(botId: string): void {
     if (this.botAuctionPending.has(botId)) return
     this.botAuctionPending.add(botId)
-    const delay = 700 + Math.random() * 1500
+    // Snappy but still human-feeling: a fresh random 0.2–1.0 s pause before every bid.
+    const delay = 200 + Math.random() * 800
     const timer = setTimeout(() => {
       this.pendingBotTimers.delete(timer)
       this.botAuctionPending.delete(botId)
@@ -793,9 +819,11 @@ export class GameRoom {
       if (auction.passedPlayers.includes(botId) || auction.highestBidderId === botId) return
       const val = this.botAuctionVals[botId] ?? 0
       const price = BOARD_SQUARES[auction.propertyIndex]?.price ?? 100
-      const increment = Math.max(10, Math.round(price * 0.05 / 5) * 5)
-      const nextBid = auction.highestBid + increment
-      if (nextBid <= val && bot.money >= nextBid) {
+      // Bigger, slightly random steps (~8–15 % of face) so auctions move quicker; the
+      // per-bot ceiling `val` is unchanged, so max spending stays as before.
+      const step = Math.max(10, Math.round((price * (0.08 + Math.random() * 0.07)) / 5) * 5)
+      const nextBid = Math.min(val, auction.highestBid + step)
+      if (nextBid > auction.highestBid && bot.money >= nextBid) {
         this.handleAuctionBid(botId, nextBid) // triggers the next round for the others
       } else {
         this.handleAuctionPass(botId)
@@ -1218,6 +1246,8 @@ export class GameRoom {
     if (active.fromPlayerId !== socketId && active.toPlayerId !== socketId) return
     this.state = confirmTrade(this.state, socketId)
     if (!this.state.activeTrade) {
+      // Trade went through → lock the streets that moved so bots don't undo it next turn.
+      this.markTraded([...active.offeredProperties, ...active.requestedProperties])
       this.clearTradeTimer()
       this.broadcast('trade:accepted', { trade: null, gameState: this.state })
       this.broadcastState()

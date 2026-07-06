@@ -540,7 +540,7 @@ function DebtModal({ gameState, myId }: { gameState: GameState; myId: string | n
       <p className={styles.warnHint}>
         {canPay
           ? '✅ Du hast genug Geld – bezahle, um weiterzuspielen.'
-          : 'Verkaufe Klassenräume/Schulgebäude oder nimm Hypotheken auf, bis du zahlen kannst.'}
+          : `Verkaufe Häuser/Schulgebäude oder nimm Hypotheken auf, um die Schulden zu begleichen. Du schuldest noch ${shortfall.toLocaleString('de-DE')}€.`}
       </p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '38vh', overflowY: 'auto', margin: '10px 0' }}>
