@@ -256,10 +256,15 @@
   box-sizing: border-box;
 }
 .mobileChipActive {
-  background: rgba(204,0,0,0.25);
-  border-color: rgba(204,0,0,0.5);
+  border-color: #00e64d;
+  box-shadow: 0 0 7px rgba(0,230,80,0.9), inset 0 0 4px rgba(0,230,80,0.35);
 }
-.mobileChipBankrupt { opacity: 0.35; }
+.mobileChipMe {
+  background: rgba(0,110,230,0.22);
+}
+.mobileChipMe .mobileChipName { font-weight: 800; }
+.mobileChipBankrupt { opacity: 0.35; text-decoration: line-through; }
+.mobileChipAfk { opacity: 0.4; }
 
 .mobileChipDot {
   width: 8px;

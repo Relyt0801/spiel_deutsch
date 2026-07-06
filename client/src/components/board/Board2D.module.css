@@ -445,13 +445,26 @@
 }
 
 .playerActive {
-  background: rgba(204, 0, 0, 0.1);
-  border-color: rgba(204, 0, 0, 0.3);
+  border-color: #00e64d;
+  box-shadow: 0 0 6px rgba(0, 230, 80, 0.9), inset 0 0 4px rgba(0, 230, 80, 0.35);
+}
+
+/* Highlight the player looking at the screen. */
+.playerMe {
+  background: rgba(0, 90, 210, 0.14);
+}
+.playerMe .playerName {
+  font-weight: 800;
 }
 
 .playerBankrupt {
   opacity: 0.35;
   text-decoration: line-through;
+}
+
+/* Disconnected / AFK – faded but still readable, sorted to the bottom. */
+.playerAfk {
+  opacity: 0.4;
 }
 
 .playerDot {

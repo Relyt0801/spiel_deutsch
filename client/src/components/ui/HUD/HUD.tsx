@@ -37,6 +37,22 @@ export function HUD() {
   const isMyTurn = currentPlayer?.id === myId
   const phase = gameState.gamePhase
 
+  // Leaderboard net worth: cash + street value (mortgaged → mortgage value) + buildings.
+  const worthOf = (playerId: string): number => {
+    let total = gameState.players.find(p => p.id === playerId)?.money ?? 0
+    for (const prop of gameState.properties) {
+      if (prop.ownerId !== playerId) continue
+      const sq = BOARD_SQUARES[prop.boardIndex]
+      if (!sq) continue
+      total += prop.isMortgaged ? (sq.mortgageValue ?? 0) : (sq.price ?? 0)
+      total += (prop.hotel ? 5 : prop.houses) * (sq.houseCost ?? 0)
+    }
+    return total
+  }
+  const rankedPlayers = gameState.players
+    .map(p => ({ p, worth: worthOf(p.id), out: p.isBankrupt || !!p.disconnected }))
+    .sort((a, b) => (a.out !== b.out ? (a.out ? 1 : -1) : b.worth - a.worth))
+
   const canRoll = isMyTurn && (phase === 'rolling') && !isAnimating && !diceAnimating
   const canEndTurn = isMyTurn && phase === 'end_turn' && !isAnimating
   // Doubles grant another roll: clicking "end turn" hands the dice back to the same player.
@@ -112,16 +128,21 @@ export function HUD() {
           (small / short screens like an iPad in landscape). Keeps the top area clear. */}
       {isCompact && (
         <div className={styles.leaderboard}>
-          {gameState.players.map((p, i) => (
-            <div
-              key={p.id}
-              className={`${styles.mobileChip} ${i === gameState.currentPlayerIndex ? styles.mobileChipActive : ''} ${p.isBankrupt ? styles.mobileChipBankrupt : ''}`}
-            >
-              <div className={styles.mobileChipDot} style={{ background: PLAYER_COLORS[p.color] || '#888' }} />
-              <span className={styles.mobileChipName}>{p.name}{p.id === myId ? ' ✓' : ''}{p.disconnected ? ' 🔌' : ''}</span>
-              <span className={styles.mobileChipMoney}>{p.money.toLocaleString('de-DE')}€</span>
-            </div>
-          ))}
+          {rankedPlayers.map(({ p, worth }) => {
+            const isActive = p.id === currentPlayer?.id
+            const isMe = p.id === myId
+            const outClass = p.isBankrupt ? styles.mobileChipBankrupt : p.disconnected ? styles.mobileChipAfk : ''
+            return (
+              <div
+                key={p.id}
+                className={`${styles.mobileChip} ${isActive ? styles.mobileChipActive : ''} ${isMe ? styles.mobileChipMe : ''} ${outClass}`}
+              >
+                <div className={styles.mobileChipDot} style={{ background: PLAYER_COLORS[p.color] || '#888' }} />
+                <span className={styles.mobileChipName}>{p.name}{isMe ? ' ✓' : ''}{p.disconnected ? ' 🔌' : ''}</span>
+                <span className={styles.mobileChipMoney}>{worth.toLocaleString('de-DE')}€</span>
+              </div>
+            )
+          })}
         </div>
       )}
 

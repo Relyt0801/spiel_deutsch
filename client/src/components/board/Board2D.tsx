@@ -219,6 +219,25 @@ export function Board2D() {
     properties.find(p => p.boardIndex === index)
 
   const currentPlayer = gameState ? gameState.players[gameState.currentPlayerIndex] : null
+
+  // Net worth for the leaderboard: cash + street value (mortgaged → mortgage value) +
+  // building value ((hotel = 5) × house cost).
+  const worthOf = (playerId: string): number => {
+    let total = players.find(p => p.id === playerId)?.money ?? 0
+    for (const prop of properties) {
+      if (prop.ownerId !== playerId) continue
+      const sq = BOARD_SQUARES[prop.boardIndex]
+      if (!sq) continue
+      total += prop.isMortgaged ? (sq.mortgageValue ?? 0) : (sq.price ?? 0)
+      total += (prop.hotel ? 5 : prop.houses) * (sq.houseCost ?? 0)
+    }
+    return total
+  }
+  // Richest first; bankrupt / disconnected (AFK) players sink to the bottom.
+  const rankedPlayers = players
+    .map(p => ({ p, worth: worthOf(p.id), out: p.isBankrupt || !!p.disconnected }))
+    .sort((a, b) => (a.out !== b.out ? (a.out ? 1 : -1) : b.worth - a.worth))
+
   // Show the in-board info panel whenever the board is big enough to read it.
   // (Kept in sync with HUD's `isCompact` so exactly one of the two is visible.)
   const showCenterInfo = viewport.w >= 760 && viewport.h >= 640
@@ -271,13 +290,18 @@ export function Board2D() {
                   </div>
                 )}
                 <div className={styles.playerList}>
-                  {players.map((p, i) => (
-                    <div key={p.id} className={`${styles.playerRow} ${i === gameState.currentPlayerIndex ? styles.playerActive : ''} ${p.isBankrupt ? styles.playerBankrupt : ''}`}>
-                      <div className={styles.playerDot} style={{ background: PLAYER_COLORS[p.color as keyof typeof PLAYER_COLORS] || '#888' }} />
-                      <span className={styles.playerName}>{p.name}{p.id === myId ? ' (Du)' : ''}{p.disconnected ? ' 🔌' : ''}</span>
-                      <span className={styles.playerMoney}>💰 {p.money.toLocaleString('de-DE')}€</span>
-                    </div>
-                  ))}
+                  {rankedPlayers.map(({ p, worth }) => {
+                    const isActive = p.id === currentPlayer?.id
+                    const isMe = p.id === myId
+                    const outClass = p.isBankrupt ? styles.playerBankrupt : p.disconnected ? styles.playerAfk : ''
+                    return (
+                      <div key={p.id} className={`${styles.playerRow} ${isActive ? styles.playerActive : ''} ${isMe ? styles.playerMe : ''} ${outClass}`}>
+                        <div className={styles.playerDot} style={{ background: PLAYER_COLORS[p.color as keyof typeof PLAYER_COLORS] || '#888' }} />
+                        <span className={styles.playerName}>{p.name}{isMe ? ' (Du)' : ''}{p.disconnected ? ' 🔌' : ''}</span>
+                        <span className={styles.playerMoney}>💰 {worth.toLocaleString('de-DE')}€</span>
+                      </div>
+                    )
+                  })}
                 </div>
                 <div className={styles.logArea}>
                   {gameState.log.slice(-3).reverse().map((entry, i) => (
