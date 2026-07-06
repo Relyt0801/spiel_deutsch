@@ -56,7 +56,7 @@ export function Lobby() {
 
         <div className={styles.playerList}>
           <div className={styles.sectionHeader}>
-            <h3 className={styles.sectionTitle}>Spieler ({allPlayers.length}/6)</h3>
+            <h3 className={styles.sectionTitle}>Spieler ({allPlayers.length}/8)</h3>
             {isHost && nonHostHumans.length > 0 && (
               <span className={styles.readyCount}>
                 {readyNonHostHumans.length}/{nonHostHumans.length} bereit
@@ -94,7 +94,7 @@ export function Lobby() {
             )
           })}
 
-          {allPlayers.length < 6 && (
+          {allPlayers.length < 8 && (
             <div className={styles.waiting}>⏳ Warte auf Mitspieler...</div>
           )}
         </div>
@@ -169,7 +169,7 @@ export function Lobby() {
         <div className={styles.actions}>
           {isHost ? (
             <>
-              {allPlayers.length < 6 && (
+              {allPlayers.length < 8 && (
                 <button className={styles.addBotBtn} onClick={handleAddBot}>
                   🤖 Bot hinzufügen
                 </button>

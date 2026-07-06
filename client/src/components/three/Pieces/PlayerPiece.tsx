@@ -15,7 +15,7 @@ interface Props {
 // Small offset so multiple players on same square don't overlap
 function getPlayerOffset(playerIndex: number, total: number): [number, number] {
   const offsets: [number, number][] = [
-    [0, 0], [-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2], [0, 0.25]
+    [0, 0], [-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2], [0, 0.25], [-0.25, 0], [0.25, 0]
   ]
   return offsets[playerIndex % offsets.length]
 }
@@ -68,6 +68,24 @@ function PieceMesh({ piece, color }: { piece: string; color: string }) {
     case 'Buch': return (
       <mesh castShadow>
         <boxGeometry args={[0.18, 0.24, 0.07]} />
+        {mat}
+      </mesh>
+    )
+    case 'Schere': return (
+      <group>
+        <mesh rotation={[0, 0, 0.3]} castShadow>
+          <boxGeometry args={[0.4, 0.05, 0.04]} />
+          {mat}
+        </mesh>
+        <mesh rotation={[0, 0, -0.3]} castShadow>
+          <boxGeometry args={[0.4, 0.05, 0.04]} />
+          {mat}
+        </mesh>
+      </group>
+    )
+    case 'Globus': return (
+      <mesh castShadow>
+        <sphereGeometry args={[0.15, 12, 12]} />
         {mat}
       </mesh>
     )
