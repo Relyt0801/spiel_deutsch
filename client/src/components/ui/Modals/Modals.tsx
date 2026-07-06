@@ -896,24 +896,27 @@ function WinnerModal({ gameState, closeModal }: WinnerModalProps) {
   const isHost = useSocketStore(s => s.isHost)
   const winner = gameState.players.find(p => p.id === gameState.winnerId)
 
-  // Leaderboard by total assets (cash + un-mortgaged property + buildings).
+  // Current total worth: cash + street value (mortgaged → mortgage value) + buildings.
   const assets = (p: GameState['players'][number]) => {
     let total = p.money
     for (const idx of p.properties) {
       const sq = BOARD_SQUARES[idx]
       const ps = gameState.properties[idx]
       if (!sq || !ps) continue
-      if (!ps.isMortgaged) total += sq.price ?? 0
+      total += ps.isMortgaged ? (sq.mortgageValue ?? 0) : (sq.price ?? 0)
       const hc = sq.houseCost ?? 0
-      total += ps.houses * hc + (ps.hotel ? hc * 5 : 0)
+      total += (ps.hotel ? 5 : ps.houses) * hc
     }
     return total
   }
-  const sorted = [...gameState.players].sort((a, b) => {
-    if (a.isBankrupt && !b.isBankrupt) return 1
-    if (!a.isBankrupt && b.isBankrupt) return -1
-    return assets(b) - assets(a)
-  })
+  const peakOf = (id: string) => gameState.peakNetWorth?.[id] ?? 0
+  const order = gameState.bankruptcyOrder ?? []
+  // Solvent players ranked by current worth; bankrupt players by REVERSE bankruptcy
+  // order (whoever held on longest ranks higher).
+  const solvent = gameState.players.filter(p => !p.isBankrupt).sort((a, b) => assets(b) - assets(a))
+  const bankrupt = gameState.players.filter(p => p.isBankrupt)
+    .sort((a, b) => order.indexOf(b.id) - order.indexOf(a.id))
+  const sorted = [...solvent, ...bankrupt]
   const medal = ['🥇', '🥈', '🥉']
 
   const playAgain = () => { getSocket().emit('room:play-again'); closeModal() }
@@ -936,7 +939,12 @@ function WinnerModal({ gameState, closeModal }: WinnerModalProps) {
           <div key={p.id} className={`${styles.standingRow} ${p.isBankrupt ? styles.bankrupt : ''} ${rank === 0 && !p.isBankrupt ? styles.standingTop : ''}`}>
             <span className={styles.rank}>{!p.isBankrupt && medal[rank] ? medal[rank] : `${rank + 1}.`}</span>
             <div className={styles.standingDot} style={{ background: PLAYER_COLORS[p.color] || '#ccc' }} />
-            <span className={styles.standingName}>{p.name}</span>
+            <span className={styles.standingName}>
+              {p.name}
+              <span style={{ display: 'block', fontSize: '0.7em', opacity: 0.6 }}>
+                Höchstvermögen: {peakOf(p.id).toLocaleString('de-DE')}€
+              </span>
+            </span>
             <span className={styles.standingMoney}>
               {p.isBankrupt ? '💸 Bankrott' : `${assets(p).toLocaleString('de-DE')}€`}
             </span>

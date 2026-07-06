@@ -5,7 +5,7 @@ import {
   buyHouse, buyHotel, sellHouse, sellHotel, sellAllBuildings, mortgage, unmortgage, proposeTrade,
   counterTrade, confirmTrade,
   declareBankruptcy, handleEndTurn, advanceTurn, applyCardEffect, sendToJail,
-  settleDebt, forceSettleDebt,
+  settleDebt, forceSettleDebt, grossWorth,
   DEFAULT_SETTINGS,
 } from './GameEngine'
 import type { TradeOffer, DiceRoll, GameSettings, GamePhase } from './GameEngine'
@@ -339,10 +339,22 @@ export class GameRoom {
   }
 
   broadcastState(): void {
+    this.updatePeaks()
     this.broadcast('game:state-update', { gameState: this.state })
     this.manageTurnTimer()
     this.manageDebtTimer()
     this.scheduleBotAction()
+  }
+
+  /** Track each player's highest total worth for the end-game standings. */
+  private updatePeaks(): void {
+    if (!this.state) return
+    const peaks = { ...this.state.peakNetWorth }
+    for (const p of this.state.players) {
+      const w = grossWorth(this.state, p.id)
+      if (w > (peaks[p.id] ?? 0)) peaks[p.id] = w
+    }
+    this.state.peakNetWorth = peaks
   }
 
   // ─── Debt settlement (forced sell/mortgage) ───────────────────────────────

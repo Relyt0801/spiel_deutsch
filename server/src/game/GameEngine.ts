@@ -121,6 +121,10 @@ export interface GameState {
   freeParkingMoney: number
   settings: GameSettings
   debt: DebtInfo | null
+  /** Player ids in the order they went bankrupt (first out = first entry). */
+  bankruptcyOrder: string[]
+  /** Highest total worth each player ever reached this game (for the final standings). */
+  peakNetWorth: Record<string, number>
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -195,6 +199,8 @@ export function initGameState(
     freeParkingMoney: 0,
     settings,
     debt: null,
+    bankruptcyOrder: [],
+    peakNetWorth: Object.fromEntries(gamePlayers.map(p => [p.id, p.money])),
   }
 }
 
@@ -211,6 +217,24 @@ export function netWorth(state: GameState, playerId: string): number {
     if (prop.hotel) total += halfHouse
     total += prop.houses * halfHouse
     if (!prop.isMortgaged) total += (sq.mortgageValue || 0)
+  }
+  return total
+}
+
+/**
+ * Gross total worth for the leaderboard: cash + street value (mortgaged → mortgage value,
+ * else full price) + full building cost. Must match the client's display formula.
+ */
+export function grossWorth(state: GameState, playerId: string): number {
+  const p = state.players.find(x => x.id === playerId)
+  if (!p) return 0
+  let total = p.money
+  for (const idx of p.properties) {
+    const sq = BOARD_SQUARES[idx]
+    const prop = state.properties[idx]
+    if (!sq || !prop) continue
+    total += prop.isMortgaged ? (sq.mortgageValue || 0) : (sq.price || 0)
+    total += (prop.hotel ? 5 : prop.houses) * (sq.houseCost || 0)
   }
   return total
 }
@@ -1099,6 +1123,8 @@ export function declareBankruptcy(
   s.players = s.players.map(p =>
     p.id === playerId ? { ...p, isBankrupt: true, isActive: false, money: 0, properties: [] } : p
   )
+  // Record the order players drop out for the final standings (first out ranks last).
+  if (!s.bankruptcyOrder.includes(playerId)) s.bankruptcyOrder = [...s.bankruptcyOrder, playerId]
 
   const winner = checkWinCondition(s)
   if (winner) {

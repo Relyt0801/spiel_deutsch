@@ -12,7 +12,7 @@
   border: 1px solid rgba(232, 212, 176, 0.18);
   border-radius: 16px;
   padding: 2rem;
-  width: min(420px, 90vw);
+  width: min(500px, 94vw);
   box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
 }
 
@@ -127,39 +127,42 @@
 .pieceGrid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 0.5rem;
+  gap: 0.6rem;
 }
 
 .pieceBtn {
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.1);
-  border-radius: 8px;
-  padding: 0.5rem 0.25rem;
+  border-radius: 10px;
+  padding: 0.75rem 0.35rem;
   color: white;
-  font-size: 0.7rem;
+  font-size: 0.78rem;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.2rem;
+  gap: 0.3rem;
   transition: all 0.2s;
 }
 .pieceBtn:hover { border-color: rgba(204,0,0,0.5); background: rgba(204,0,0,0.1); }
 .pieceBtn.selected { border-color: #CC0000; background: rgba(204,0,0,0.2); }
 .pieceBtn.taken { opacity: 0.3; cursor: not-allowed; }
 .pieceBtn.taken:hover { border-color: rgba(255,255,255,0.1); background: rgba(255,255,255,0.05); }
-.pieceBtn span { font-size: 0.65rem; opacity: 0.8; }
-.pieceBtn .pieceEmoji { font-size: 1.4rem; opacity: 1; line-height: 1; }
+.pieceBtn span { font-size: 0.68rem; opacity: 0.8; }
+.pieceBtn .pieceEmoji { font-size: 1.7rem; opacity: 1; line-height: 1; }
 
+/* All 9 colours flush in one row on desktop; on phones the 9th wraps alone below. */
 .colorRow {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  gap: 0.4rem;
+  justify-items: center;
 }
 
 .colorBtn {
-  width: 36px;
-  height: 36px;
+  width: 100%;
+  max-width: 38px;
+  aspect-ratio: 1 / 1;
   border-radius: 50%;
   border: 3px solid transparent;
   cursor: pointer;
@@ -169,6 +172,10 @@
 .colorBtn.selected { border-color: white; transform: scale(1.2); }
 .colorBtn.taken { cursor: not-allowed; }
 .colorBtn.taken:hover { transform: none; }
+
+@media (max-width: 480px) {
+  .colorRow { grid-template-columns: repeat(8, 1fr); }
+}
 
 .error {
   color: #ff6b6b;

@@ -139,6 +139,8 @@ export interface GameState {
   freeParkingMoney: number
   settings: GameSettings
   debt: DebtInfo | null
+  bankruptcyOrder: string[]
+  peakNetWorth: Record<string, number>
 }
 
 export const STARTING_MONEY = 1500
