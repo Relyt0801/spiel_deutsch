@@ -16,7 +16,7 @@ interface GameStore {
   lobbyPlayers: LobbyPlayerEntry[]
   lobbyAllReady: boolean
   lobbySettings: GameSettings
-  setGameState: (state: GameState) => void
+  setGameState: (state: GameState | null) => void
   setLobbyPlayers: (players: LobbyPlayerEntry[]) => void
   setLobbyAllReady: (v: boolean) => void
   setLobbySettings: (s: GameSettings) => void

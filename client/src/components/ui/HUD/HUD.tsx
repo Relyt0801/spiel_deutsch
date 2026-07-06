@@ -3,6 +3,7 @@ import { useGameStore } from '../../../store/gameStore'
 import { useSocketStore } from '../../../store/socketStore'
 import { useUiStore } from '../../../store/uiStore'
 import { getSocket } from '../../../socket/socketClient'
+import { clearSavedRoom } from '../../../socket/session'
 import { PLAYER_COLORS } from '../../../types/game'
 import { BOARD_SQUARES } from '../../../config/boardData'
 import { MyPropertiesPanel } from './MyPropertiesPanel'
@@ -26,8 +27,9 @@ export function HUD() {
     window.addEventListener('resize', onResize)
     return () => window.removeEventListener('resize', onResize)
   }, [])
-  // Small phones (board centre info hidden) get a compact LEFT leaderboard.
-  const isSmall = Math.min(viewport.w, viewport.h) < 600
+  // Below this the board (and thus its center info) gets too small to read, so we
+  // show a compact leaderboard on the LEFT instead. Threshold matches Board2D.
+  const isCompact = viewport.w < 760 || viewport.h < 640
 
   if (!gameState) return null
 
@@ -42,6 +44,13 @@ export function HUD() {
 
   const handleRoll = () => getSocket().emit('game:roll-dice')
   const handleEndTurn = () => getSocket().emit('game:end-turn')
+  const handleLeave = () => {
+    if (!window.confirm('Spiel wirklich verlassen? Du wirst sofort entfernt.')) return
+    getSocket().emit('room:leave')
+    clearSavedRoom()
+    useGameStore.getState().clearGame()
+    useUiStore.getState().setAppPhase('menu')
+  }
 
   const myPlayer = gameState.players.find(p => p.id === myId)
   const canDeclareBankruptcy = isMyTurn && phase === 'end_turn' && myPlayer && !myPlayer.isBankrupt
@@ -99,16 +108,17 @@ export function HUD() {
         )}
       </div>
 
-      {/* Left leaderboard — shown only on small phones (board centre info hidden) */}
-      {isSmall && (
-        <div className={styles.leftLeaderboard}>
+      {/* Compact leaderboard on the LEFT — shown when the board center info is hidden
+          (small / short screens like an iPad in landscape). Keeps the top area clear. */}
+      {isCompact && (
+        <div className={styles.leaderboard}>
           {gameState.players.map((p, i) => (
             <div
               key={p.id}
               className={`${styles.mobileChip} ${i === gameState.currentPlayerIndex ? styles.mobileChipActive : ''} ${p.isBankrupt ? styles.mobileChipBankrupt : ''}`}
             >
               <div className={styles.mobileChipDot} style={{ background: PLAYER_COLORS[p.color] || '#888' }} />
-              <span className={styles.mobileChipName}>{p.name}{p.id === myId ? ' ✓' : ''}</span>
+              <span className={styles.mobileChipName}>{p.name}{p.id === myId ? ' ✓' : ''}{p.disconnected ? ' 🔌' : ''}</span>
               <span className={styles.mobileChipMoney}>{p.money.toLocaleString('de-DE')}€</span>
             </div>
           ))}
@@ -184,6 +194,7 @@ export function HUD() {
               💸 Bankrott erklären
             </button>
           )}
+          <button className={styles.btnLeave} onClick={handleLeave}>🚪 Verlassen</button>
         </div>
       )}
 

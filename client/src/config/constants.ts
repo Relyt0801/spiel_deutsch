@@ -1,4 +1,8 @@
-export const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:3001'
+// In dev the server runs separately on :3001. In a production build the client is
+// served BY the server (single link), so we connect to the same origin ('' → same
+// host). An explicit VITE_SOCKET_URL always wins (e.g. a split Render deployment).
+export const SOCKET_URL =
+  import.meta.env.VITE_SOCKET_URL || (import.meta.env.DEV ? 'http://localhost:3001' : '')
 
 export const REMI_COLORS = {
   red: '#CC0000',

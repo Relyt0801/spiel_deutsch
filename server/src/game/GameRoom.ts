@@ -5,11 +5,13 @@ import {
   buyHouse, buyHotel, sellHouse, sellHotel, sellAllBuildings, mortgage, unmortgage, proposeTrade,
   counterTrade, confirmTrade,
   declareBankruptcy, handleEndTurn, advanceTurn, applyCardEffect, sendToJail,
+  settleDebt, forceSettleDebt,
   DEFAULT_SETTINGS,
 } from './GameEngine'
 import type { TradeOffer, DiceRoll, GameSettings, GamePhase } from './GameEngine'
 import { BOARD_SQUARES, COLOR_GROUPS, DOUBLE_IN_ROW_JAIL, RAILROAD_INDICES, UTILITY_INDICES } from '../config/boardData'
 import { logger } from '../utils/logger'
+import { generateBotName } from '../utils/botNames'
 
 export type LobbyPlayer = {
   id: string
@@ -17,12 +19,21 @@ export type LobbyPlayer = {
   color: string
   piece: string
   isBot: boolean
+  token?: string
+  disconnected?: boolean
 }
+
+/** Grace period (ms) a reloading player has to rejoin before being removed. */
+export const RECONNECT_GRACE_MS = 45_000
+/** How long a connected player may take to sell/mortgage before the server auto-settles. */
+export const DEBT_GRACE_MS = 90_000
 
 export class GameRoom {
   code: string
   hostId: string
   state: GameState | null = null
+  /** Set by RoomManager to clean up the room once the last human is gone. */
+  onEmpty?: () => void
   lobbyPlayers: LobbyPlayer[] = []
   readyPlayers: Set<string> = new Set()
   settings: GameSettings = { ...DEFAULT_SETTINGS }
@@ -33,9 +44,14 @@ export class GameRoom {
   private turnTimer: NodeJS.Timeout | null = null
   private turnTimerPlayerId: string | null = null
   private tradeTimer: NodeJS.Timeout | null = null
+  private debtTimer: ReturnType<typeof setTimeout> | null = null
   private botAuctionVals: Record<string, number> = {}
   private botAuctionPending: Set<string> = new Set()
   private tradeCounterRounds = 0
+  // Reconnect support: stable client token ⇄ current playerId, plus per-player grace timers.
+  private tokenByPlayer: Map<string, string> = new Map()
+  private playerByToken: Map<string, string> = new Map()
+  private disconnectTimers: Map<string, ReturnType<typeof setTimeout>> = new Map()
 
   constructor(code: string, hostId: string, io: Server) {
     this.code = code
@@ -43,10 +59,17 @@ export class GameRoom {
     this.io = io
   }
 
+  private setToken(playerId: string, token?: string): void {
+    if (!token) return
+    this.tokenByPlayer.set(playerId, token)
+    this.playerByToken.set(token, playerId)
+  }
+
   // ─── Lobby management ────────────────────────────────────────────────────
 
-  addLobbyPlayer(id: string, name: string, color: string, piece: string): void {
+  addLobbyPlayer(id: string, name: string, color: string, piece: string, token?: string): void {
     this.lobbyPlayers.push({ id, name, color, piece, isBot: false })
+    this.setToken(id, token)
     this.broadcastLobbyUpdate()
   }
 
@@ -58,9 +81,9 @@ export class GameRoom {
     const takenPieces = this.lobbyPlayers.map(p => p.piece)
     const color = botColors.find(c => !takenColors.includes(c)) ?? 'blue'
     const piece = botPieces.find(p => !takenPieces.includes(p)) ?? 'Radiergummi'
-    const botCount = this.lobbyPlayers.filter(p => p.isBot).length + 1
-    const botId = `bot_${Date.now()}_${botCount}`
-    this.lobbyPlayers.push({ id: botId, name: `Bot ${botCount}`, color, piece, isBot: true })
+    const name = generateBotName(this.lobbyPlayers.map(p => p.name))
+    const botId = `bot_${Date.now()}_${Math.floor(Math.random() * 100000)}`
+    this.lobbyPlayers.push({ id: botId, name, color, piece, isBot: true })
     this.readyPlayers.add(botId)
     this.broadcastLobbyUpdate()
   }
@@ -90,16 +113,30 @@ export class GameRoom {
     return nonHostHumans.every(p => this.readyPlayers.has(p.id))
   }
 
-  getLobbyWithStatus(): Array<LobbyPlayer & { isReady: boolean }> {
-    return this.lobbyPlayers.map(p => ({
+  getLobbyWithStatus(): Array<Omit<LobbyPlayer, 'token'> & { isReady: boolean }> {
+    // Never expose the private reconnect token to clients.
+    return this.lobbyPlayers.map(({ token, ...p }) => ({
       ...p,
       isReady: p.isBot || this.readyPlayers.has(p.id),
     }))
   }
 
+  private forgetToken(playerId: string): void {
+    const token = this.tokenByPlayer.get(playerId)
+    if (token) this.playerByToken.delete(token)
+    this.tokenByPlayer.delete(playerId)
+  }
+
+  private clearDisconnectTimer(playerId: string): void {
+    const t = this.disconnectTimers.get(playerId)
+    if (t) { clearTimeout(t); this.disconnectTimers.delete(playerId) }
+  }
+
   removeLobbyPlayer(id: string): void {
     this.lobbyPlayers = this.lobbyPlayers.filter(p => p.id !== id)
     this.readyPlayers.delete(id)
+    this.clearDisconnectTimer(id)
+    this.forgetToken(id)
     if (this.state) {
       this.state.players = this.state.players.map(p =>
         p.id === id ? { ...p, isActive: false } : p
@@ -117,6 +154,171 @@ export class GameRoom {
   startGame(): void {
     this.state = initGameState(this.lobbyPlayers, this.code, this.hostId, this.settings)
     this.broadcastState() // manageTurnTimer() inside starts the clock when time-limit is on
+  }
+
+  // ─── Disconnect / reconnect grace ─────────────────────────────────────────
+
+  /** A socket dropped (reload/network). Keep the slot alive for RECONNECT_GRACE_MS. */
+  handleDisconnect(playerId: string): void {
+    const lobbyP = this.lobbyPlayers.find(p => p.id === playerId)
+    if (lobbyP?.isBot) return
+    const inState = this.state?.players.some(p => p.id === playerId) ?? false
+    if (!lobbyP && !inState) return
+    // No reconnect token → can't be restored, drop right away.
+    if (!this.tokenByPlayer.has(playerId)) { this.dropPlayer(playerId); return }
+
+    if (lobbyP) lobbyP.disconnected = true
+    if (this.state) {
+      this.state.players = this.state.players.map(p =>
+        p.id === playerId ? { ...p, disconnected: true } : p)
+    }
+    this.clearDisconnectTimer(playerId)
+    this.disconnectTimers.set(playerId, setTimeout(() => {
+      this.disconnectTimers.delete(playerId)
+      this.dropPlayer(playerId)
+    }, RECONNECT_GRACE_MS))
+
+    if (this.state) {
+      // If they dropped mid-move, finish the move server-side; otherwise broadcastState
+      // hands the turn to the server-driven auto-player so nothing freezes.
+      const cp = this.state.players[this.state.currentPlayerIndex]
+      if (cp?.id === playerId && this.state.gamePhase === 'moving') {
+        this.handleMovementComplete(playerId)
+      } else {
+        this.broadcastState()
+      }
+    } else {
+      this.broadcastLobbyUpdate()
+    }
+  }
+
+  /** Re-attach a reloaded client (new socket id) to its old slot via the stable token. */
+  reconnectPlayer(newSocketId: string, token: string): { isHost: boolean; inGame: boolean } | null {
+    const oldId = this.playerByToken.get(token)
+    if (!oldId) return null
+    const present = this.lobbyPlayers.some(p => p.id === oldId) ||
+      (this.state?.players.some(p => p.id === oldId) ?? false)
+    if (!present) return null
+
+    this.clearDisconnectTimer(oldId)
+    if (oldId !== newSocketId) this.reassignPlayerId(oldId, newSocketId)
+
+    const lp = this.lobbyPlayers.find(p => p.id === newSocketId)
+    if (lp) lp.disconnected = false
+    if (this.state) {
+      this.state.players = this.state.players.map(p =>
+        p.id === newSocketId ? { ...p, disconnected: false } : p)
+    }
+
+    if (this.state) this.broadcastState()
+    else this.broadcastLobbyUpdate()
+    return { isHost: this.hostId === newSocketId, inGame: !!this.state }
+  }
+
+  /** Explicit "Verlassen" – out immediately, no grace. */
+  handleExplicitLeave(playerId: string): void {
+    this.dropPlayer(playerId)
+  }
+
+  /** Remove a player for good: bankruptcy (in game, per chosen mode) or lobby removal. */
+  private dropPlayer(playerId: string): void {
+    this.clearDisconnectTimer(playerId)
+    if (this.state) {
+      const player = this.state.players.find(p => p.id === playerId)
+      if (player && player.isActive && !player.isBankrupt) {
+        const isCurrent = this.state.players[this.state.currentPlayerIndex]?.id === playerId
+        this.state = declareBankruptcy(this.state, playerId, null, this.settings.bankruptcyMode, isCurrent)
+        this.broadcast('game:player-bankrupt', { playerId, gameState: this.state })
+        if (this.state.gamePhase === 'game_over') {
+          this.broadcast('game:over', { winnerId: this.state.winnerId, gameState: this.state })
+        }
+      }
+      this.lobbyPlayers = this.lobbyPlayers.filter(p => p.id !== playerId)
+      this.readyPlayers.delete(playerId)
+      this.forgetToken(playerId)
+      this.ensureHost()
+      this.broadcastState()
+      this.processAuctionQueue()
+    } else {
+      this.removeLobbyPlayer(playerId) // also forgets token + timer
+      this.ensureHost()
+      this.broadcastLobbyUpdate()
+    }
+    this.maybeCleanupEmpty()
+  }
+
+  /** Hand the host role to another human if the current host is gone. */
+  private ensureHost(): void {
+    if (this.lobbyPlayers.some(p => p.id === this.hostId)) return
+    const newHost = this.lobbyPlayers.find(p => !p.isBot) ?? this.lobbyPlayers[0]
+    if (newHost) {
+      this.hostId = newHost.id
+      if (this.state) this.state.hostId = newHost.id
+    }
+  }
+
+  private maybeCleanupEmpty(): void {
+    const humans = this.lobbyPlayers.filter(p => !p.isBot)
+    if (humans.length === 0) this.onEmpty?.()
+  }
+
+  /** Restart in the SAME lobby after a game (host only). */
+  resetToLobby(socketId: string): void {
+    if (socketId !== this.hostId || !this.state) return
+    if (this.auctionTimer) { clearInterval(this.auctionTimer); this.auctionTimer = null }
+    this.clearTurnTimer()
+    this.clearTradeTimer()
+    this.clearDebtTimer()
+    for (const t of this.pendingBotTimers) clearTimeout(t)
+    this.pendingBotTimers.clear()
+    for (const t of this.disconnectTimers.values()) clearTimeout(t)
+    this.disconnectTimers.clear()
+    this.state = null
+    this.savedPhaseBeforeQueue = null
+    // Keep everyone still in the lobby; bots stay ready.
+    this.lobbyPlayers = this.lobbyPlayers.map(p => ({ ...p, disconnected: false }))
+    this.broadcast('room:returned-to-lobby', {})
+    this.broadcastLobbyUpdate()
+  }
+
+  /** Rewrite a player's id everywhere when their socket id changes on reconnect. */
+  private reassignPlayerId(oldId: string, newId: string): void {
+    const token = this.tokenByPlayer.get(oldId)
+    if (token) { this.tokenByPlayer.delete(oldId); this.tokenByPlayer.set(newId, token); this.playerByToken.set(token, newId) }
+    const t = this.disconnectTimers.get(oldId)
+    if (t) { this.disconnectTimers.delete(oldId); this.disconnectTimers.set(newId, t) }
+    if (this.hostId === oldId) this.hostId = newId
+    if (this.turnTimerPlayerId === oldId) this.turnTimerPlayerId = newId
+    this.lobbyPlayers = this.lobbyPlayers.map(p => p.id === oldId ? { ...p, id: newId } : p)
+    if (this.readyPlayers.has(oldId)) { this.readyPlayers.delete(oldId); this.readyPlayers.add(newId) }
+
+    const s = this.state
+    if (!s) return
+    if (s.hostId === oldId) s.hostId = newId
+    if (s.winnerId === oldId) s.winnerId = newId
+    s.players = s.players.map(p => p.id === oldId ? { ...p, id: newId } : p)
+    s.playerOrder = s.playerOrder.map(id => id === oldId ? newId : id)
+    s.properties = s.properties.map(pr => pr.ownerId === oldId ? { ...pr, ownerId: newId } : pr)
+    if (s.activeTrade) {
+      const tr = s.activeTrade
+      s.activeTrade = {
+        ...tr,
+        fromPlayerId: tr.fromPlayerId === oldId ? newId : tr.fromPlayerId,
+        toPlayerId: tr.toPlayerId === oldId ? newId : tr.toPlayerId,
+        confirmedBy: tr.confirmedBy.map(id => id === oldId ? newId : id),
+      }
+    }
+    if (s.auction) {
+      const a = s.auction
+      const bids: Record<string, number> = {}
+      for (const [k, v] of Object.entries(a.bids)) bids[k === oldId ? newId : k] = v
+      s.auction = {
+        ...a,
+        highestBidderId: a.highestBidderId === oldId ? newId : a.highestBidderId,
+        bids,
+        passedPlayers: a.passedPlayers.map(id => id === oldId ? newId : id),
+      }
+    }
   }
 
   // ─── Broadcasts ──────────────────────────────────────────────────────────
@@ -137,7 +339,48 @@ export class GameRoom {
   broadcastState(): void {
     this.broadcast('game:state-update', { gameState: this.state })
     this.manageTurnTimer()
+    this.manageDebtTimer()
     this.scheduleBotAction()
+  }
+
+  // ─── Debt settlement (forced sell/mortgage) ───────────────────────────────
+
+  /** While a human owes money, give them time to sell; auto-settle on timeout. */
+  private manageDebtTimer(): void {
+    if (!this.state || this.state.gamePhase !== 'debt_settlement' || !this.state.debt) {
+      this.clearDebtTimer()
+      return
+    }
+    const debtor = this.state.players.find(p => p.id === this.state!.debt!.debtorId)
+    // Bots and disconnected players are settled by the server-driven auto-player.
+    if (debtor?.isBot || debtor?.disconnected) return
+    if (!this.debtTimer) {
+      this.debtTimer = setTimeout(() => {
+        this.debtTimer = null
+        if (this.state?.gamePhase === 'debt_settlement') {
+          this.state = forceSettleDebt(this.state)
+          this.broadcastState()
+          this.processAuctionQueue()
+        }
+      }, DEBT_GRACE_MS)
+    }
+  }
+
+  private clearDebtTimer(): void {
+    if (this.debtTimer) { clearTimeout(this.debtTimer); this.debtTimer = null }
+  }
+
+  /** Debtor confirms payment once they have raised enough cash. */
+  handleSettleDebt(socketId: string): void {
+    if (!this.state || this.state.gamePhase !== 'debt_settlement') return
+    const d = this.state.debt
+    if (!d || d.debtorId !== socketId) return
+    const debtor = this.state.players.find(p => p.id === socketId)
+    if (!debtor || debtor.money < d.amount) return // not enough yet – keep selling
+    this.clearDebtTimer()
+    this.state = settleDebt(this.state)
+    this.broadcastState()
+    this.processAuctionQueue()
   }
 
   // ─── Bot AI ───────────────────────────────────────────────────────────────
@@ -145,18 +388,26 @@ export class GameRoom {
   private scheduleBotAction(): void {
     if (!this.state) return
     const cp = this.state.players[this.state.currentPlayerIndex]
-    if (!cp?.isBot) return
+    // Bots AND disconnected humans are driven by the server so a turn never stalls.
+    const serverDriven = !!cp && (cp.isBot || (cp.disconnected && !cp.isBankrupt))
+    if (!serverDriven) return
     if (this.state.gamePhase === 'moving') return
 
     const botId = cp.id
     const phase = this.state.gamePhase
-    const delay = phase === 'rolling' ? 1500 : 1000
+    // Linger on a drawn card so everyone can read it before it is acknowledged.
+    const delay = phase === 'rolling' ? 1500 : phase === 'card_drawn' ? 4500 : 1000
 
     const timer = setTimeout(() => {
       this.pendingBotTimers.delete(timer)
       if (!this.state) return
       const current = this.state.players[this.state.currentPlayerIndex]
       if (current?.id !== botId) return
+      // A disconnected human plays a safe minimal turn (never buys, never trades).
+      if (current.disconnected && !current.isBot) {
+        this.autoResolveDisconnectedTurn(botId)
+        return
+      }
 
       switch (this.state.gamePhase) {
         case 'rolling': {
@@ -249,11 +500,36 @@ export class GameRoom {
     const sq = BOARD_SQUARES[idx]
     if (!sq || sq.type !== 'property' || !sq.group || !this.state) return false
     const group = COLOR_GROUPS[sq.group] ?? []
+    const owned = group.filter(i => this.state!.properties[i]?.ownerId === playerId).length
     const byOther = group.filter(i => {
       const o = this.state!.properties[i]?.ownerId
       return o && o !== playerId
     }).length
-    return byOther >= 1 // an opponent already blocks this set
+    // Spare only if an opponent already blocks the set AND the bot isn't itself
+    // holding several of the colour (≥2 = building/blocking a set → keep it!).
+    return byOther >= 1 && owned <= 1
+  }
+
+  /**
+   * A street the bot must NEVER give away in a trade: it owns ≥2 of the colour
+   * group (a near-complete or complete set), or ≥2 railroads / both works. Giving
+   * these up throws away a monopoly – and would often hand the opponent theirs.
+   */
+  private isProtectedSetProperty(playerId: string, idx: number): boolean {
+    const sq = BOARD_SQUARES[idx]
+    if (!sq || !this.state) return false
+    if (sq.type === 'property' && sq.group) {
+      const group = COLOR_GROUPS[sq.group] ?? []
+      const owned = group.filter(i => this.state!.properties[i]?.ownerId === playerId).length
+      return owned >= 2
+    }
+    if (sq.type === 'railroad') {
+      return RAILROAD_INDICES.filter(i => this.state!.properties[i]?.ownerId === playerId).length >= 2
+    }
+    if (sq.type === 'utility') {
+      return UTILITY_INDICES.filter(i => this.state!.properties[i]?.ownerId === playerId).length >= 2
+    }
+    return false
   }
 
   private botShouldBuy(botId: string, idx: number): boolean {
@@ -303,8 +579,10 @@ export class GameRoom {
     }
 
     const wants: number[] = trade.offeredProperties // streets the bot would receive
-    // Refuse to hand over streets the bot strongly values (its own set-builders).
+    // Refuse to hand over set-builders: never give a near/complete set (≥2 of a
+    // colour) away, and keep streets the bot strongly values.
     const give = trade.requestedProperties.filter(i => {
+      if (this.isProtectedSetProperty(botId, i)) return false
       const sv = this.propertyStrategicValue(botId, i)
       return !(sv >= (BOARD_SQUARES[i]?.price ?? 0) * 1.5)
     })
@@ -426,8 +704,10 @@ export class GameRoom {
       const cashOut = giveMoney - recvMoney
       const ratio = receives / Math.max(1, gives)
 
-      // Hard guards — a bot must never lose value or bleed cash for nothing.
+      // Hard guards — a bot must never lose value, bleed cash for nothing, or give
+      // away a near/complete set (≥2 of a colour).
       const losesCashForNothing = cashOut > 0 && getProps.recv.length === 0
+      const givesProtectedSet = getProps.give.some(i => this.isProtectedSetProperty(botId, i))
       const reserveOk = bot.money - Math.max(0, cashOut) >= 120
       // Accept only when the total value coming back is fair-or-better (small random margin).
       // (Set-completing streets are already valued ~2.4× by bundleValue, so the bot will
@@ -436,7 +716,7 @@ export class GameRoom {
 
       const canCounter = !botIsFrom && this.tradeCounterRounds < 5
 
-      if (fair && reserveOk && !losesCashForNothing) {
+      if (fair && reserveOk && !losesCashForNothing && !givesProtectedSet) {
         this.handleConfirmTrade(botId, tradeId)
       } else if (canCounter && ratio >= 0.15 && !losesCashForNothing) {
         // Not completely off → make a flexible counter rather than flatly rejecting.
@@ -449,10 +729,11 @@ export class GameRoom {
         if (counterReserveOk && changed) {
           this.handleCounterTrade(botId, c)
         } else {
-          // Fallback: keep streets, just rebalance with cash so the bot ends up fair.
+          // Fallback: keep streets (minus any protected set), just rebalance with cash.
+          const safeGive = trade.requestedProperties.filter(i => !this.isProtectedSetProperty(botId, i))
           const askExtra = Math.max(0, Math.floor((gives - receives) * (0.8 + Math.random() * 0.4)))
           this.handleCounterTrade(botId, {
-            offeredProperties: trade.requestedProperties,
+            offeredProperties: safeGive,
             requestedProperties: trade.offeredProperties,
             offeredMoney: 0,
             requestedMoney: trade.offeredMoney + askExtra,
@@ -582,9 +863,10 @@ export class GameRoom {
       }, DICE_ANIM_MS + i * STEP_MS)
     }
 
-    // Bots have no client to report movement completion, so schedule it server-side.
+    // Bots (and disconnected humans) have no client to report movement completion,
+    // so schedule it server-side.
     const mover = this.state.players.find(p => p.id === socketId)
-    if (mover?.isBot) {
+    if (mover?.isBot || mover?.disconnected) {
       const moveTimer = setTimeout(() => {
         this.pendingBotTimers.delete(moveTimer)
         if (this.state?.gamePhase === 'moving') this.handleMovementComplete(socketId)
@@ -625,6 +907,8 @@ export class GameRoom {
     this.startAuctionTimer()
     this.broadcast('auction:started', { auction: this.state.auction, gameState: this.state })
     this.broadcastState()
+    this.autoPassBrokeBidders() // players with 0 € are out before it even starts
+    if (this.resolveAuctionIfDone()) return
     this.startBotAuctionBidding()
   }
 
@@ -673,6 +957,28 @@ export class GameRoom {
       case 'buying': this.handleDeclineProperty(cp.id); break
       case 'card_drawn': this.handleCardAcknowledge(cp.id); break
       case 'end_turn': this.handleEndTurn(cp.id); break
+    }
+  }
+
+  /** Plays one safe step of a disconnected player's turn so the game keeps moving. */
+  private autoResolveDisconnectedTurn(playerId: string): void {
+    if (!this.state) return
+    const player = this.state.players.find(p => p.id === playerId)
+    if (!player) return
+    switch (this.state.gamePhase) {
+      case 'rolling': this.handleRollDice(playerId); break
+      case 'buying': this.handleDeclineProperty(playerId); break // never auto-buy for an absent player
+      case 'card_drawn': this.handleCardAcknowledge(playerId); break
+      case 'jail_decision':
+        this.handleJailAction(playerId, player.getOutOfJailCards > 0 ? 'card' : player.money >= 50 ? 'pay' : 'roll')
+        break
+      case 'debt_settlement':
+        this.clearDebtTimer()
+        this.state = forceSettleDebt(this.state)
+        this.broadcastState()
+        this.processAuctionQueue()
+        break
+      case 'end_turn': this.handleEndTurn(playerId); break
     }
   }
 
@@ -728,6 +1034,10 @@ export class GameRoom {
         this.broadcast('auction:tick', { timeRemaining: 10 })
       }
       this.broadcast('auction:bid-placed', { playerId: socketId, amount, auction: this.state.auction })
+      // Drop anyone who can no longer afford to outbid, then check if that decided it.
+      this.autoPassBrokeBidders()
+      // If everyone else has already passed, the bidder wins right away.
+      if (this.resolveAuctionIfDone()) return
       // Let the other bots react to the new highest bid.
       this.scheduleBotAuctionRound(socketId)
     } else {
@@ -737,23 +1047,68 @@ export class GameRoom {
 
   handleAuctionPass(socketId: string): void {
     if (!this.state?.auction) return
+    // Only players still in the auction can pass.
+    if (this.state.auction.passedPlayers.includes(socketId)) return
     this.state = passAuction(this.state, socketId)
-    const active = this.state.players.filter(p => p.isActive && !p.isBankrupt)
+    if (!this.state.auction) return
+    // Let everyone see the updated "passed" status, then check if the auction is decided.
+    this.broadcast('auction:bid-placed', {
+      playerId: socketId,
+      amount: this.state.auction.highestBid,
+      auction: this.state.auction,
+    })
+    this.broadcastState()
+    this.resolveAuctionIfDone()
+  }
+
+  /**
+   * Ends the auction only when it is genuinely decided:
+   *  - everyone has passed (no winner), or
+   *  - just one player remains AND that player already holds the highest bid.
+   * This stops the player who *started* the auction (by declining) from ending it
+   * for everyone simply by passing before anyone else got a chance to bid.
+   */
+  private resolveAuctionIfDone(): boolean {
+    if (!this.state?.auction) return false
     const auction = this.state.auction
-    if (!auction) return
-    const remaining = active.filter(p => !auction.passedPlayers.includes(p.id))
-    // End only when EVERYONE passed (no winner), or when just one bidder is left AND a
-    // real bid exists (that bidder wins). A lone remaining player with no bid keeps the
-    // auction open so the starter can't abort it for everyone by passing.
+    const activePlayers = this.state.players.filter(p => p.isActive && !p.isBankrupt)
+    const remaining = activePlayers.filter(p => !auction.passedPlayers.includes(p.id))
     const everyonePassed = remaining.length === 0
-    const oneLeftWithBid = remaining.length <= 1 && !!auction.highestBidderId
-    if (everyonePassed || oneLeftWithBid) {
-      if (this.auctionTimer) clearInterval(this.auctionTimer)
-      this.state = endAuction(this.state)
-      this.broadcast('auction:ended', { winnerId: auction.highestBidderId, amount: auction.highestBid, gameState: this.state })
-      this.broadcastState()
-      this.processAuctionQueue()
+    const onlyLeaderLeft = remaining.length === 1 && auction.highestBidderId === remaining[0].id
+    if (!everyonePassed && !onlyLeaderLeft) return false
+
+    if (this.auctionTimer) clearInterval(this.auctionTimer)
+    this.state = endAuction(this.state)
+    this.broadcast('auction:ended', { winnerId: auction.highestBidderId, amount: auction.highestBid, gameState: this.state })
+    this.broadcastState()
+    this.processAuctionQueue()
+    return true
+  }
+
+  /**
+   * Auto-pass every active bidder who can no longer outbid the current high bid.
+   * A player needs more than `highestBid` to place a valid bid, so anyone at or below
+   * it is out anyway – this passes them automatically instead of forcing a manual click.
+   */
+  private autoPassBrokeBidders(): void {
+    if (!this.state?.auction) return
+    const broke = this.state.players.filter(p =>
+      p.isActive && !p.isBankrupt &&
+      p.id !== this.state!.auction!.highestBidderId &&
+      !this.state!.auction!.passedPlayers.includes(p.id) &&
+      // Can't outbid the current high bid, or isn't here to bid at all.
+      (p.money <= this.state!.auction!.highestBid || p.disconnected)
+    )
+    for (const p of broke) {
+      this.state = passAuction(this.state!, p.id)
+      if (!this.state.auction) return
+      this.broadcast('auction:bid-placed', {
+        playerId: p.id,
+        amount: this.state.auction.highestBid,
+        auction: this.state.auction,
+      })
     }
+    if (broke.length > 0) this.broadcastState()
   }
 
   handleEndTurn(socketId: string): void {
@@ -893,7 +1248,12 @@ export class GameRoom {
   handleDeclareBankruptcy(socketId: string): void {
     if (!this.state) return
     const currentPlayer = this.state.players[this.state.currentPlayerIndex]
-    const creditorId = this.state.properties[currentPlayer.position]?.ownerId || null
+    // Prefer the open debt's creditor (rent/tax); fall back to the current square's owner.
+    const debt = this.state.debt
+    const creditorId = debt?.debtorId === socketId
+      ? debt.creditorId
+      : (this.state.properties[currentPlayer.position]?.ownerId || null)
+    if (debt) { this.clearDebtTimer(); this.state = { ...this.state, debt: null } }
     this.state = declareBankruptcy(this.state, socketId, creditorId, this.settings.bankruptcyMode)
     this.broadcast('game:player-bankrupt', { playerId: socketId, gameState: this.state })
     if (this.state.gamePhase === 'game_over') {
@@ -933,6 +1293,8 @@ export class GameRoom {
     this.startAuctionTimer()
     this.broadcast('auction:started', { auction: this.state.auction, gameState: this.state })
     this.broadcastState()
+    this.autoPassBrokeBidders() // players with 0 € are out before it even starts
+    if (this.resolveAuctionIfDone()) return
     this.startBotAuctionBidding()
   }
 

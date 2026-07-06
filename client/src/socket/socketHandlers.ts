@@ -1,14 +1,33 @@
 import { getSocket } from './socketClient'
+import { getClientToken, getSavedRoomCode, saveRoomCode, clearSavedRoom } from './session'
 import { useGameStore } from '../store/gameStore'
 import { useSocketStore } from '../store/socketStore'
 import { useUiStore } from '../store/uiStore'
 
+/** Keep socketStore.isHost in sync with the authoritative hostId from the server. */
+function syncHost(hostId: string | undefined): void {
+  if (!hostId) return
+  const myId = useSocketStore.getState().myPlayerId
+  useSocketStore.getState().setIsHost(hostId === myId)
+}
+
+let handlersRegistered = false
+
 export function registerSocketHandlers(): void {
+  // Guard against double registration (StartMenu can remount, e.g. after returning
+  // to the main menu) – otherwise every event would be processed twice.
+  if (handlersRegistered) return
+  handlersRegistered = true
   const socket = getSocket()
 
   socket.on('connect', () => {
     useSocketStore.getState().setConnectionStatus('connected')
     useSocketStore.getState().setMyPlayerId(socket.id || null)
+    // After a reload / dropped connection, try to rejoin the saved room.
+    const savedRoom = getSavedRoomCode()
+    if (savedRoom) {
+      socket.emit('room:rejoin', { roomCode: savedRoom, clientToken: getClientToken() })
+    }
   })
 
   socket.on('disconnect', () => {
@@ -23,6 +42,7 @@ export function registerSocketHandlers(): void {
   socket.on('room:created', ({ roomCode, gameState, lobbyPlayers }) => {
     useSocketStore.getState().setRoomCode(roomCode)
     useSocketStore.getState().setIsHost(true)
+    saveRoomCode(roomCode)
     if (gameState) useGameStore.getState().setGameState(gameState)
     if (lobbyPlayers) useGameStore.getState().setLobbyPlayers(lobbyPlayers)
     useUiStore.getState().setAppPhase('lobby')
@@ -35,10 +55,33 @@ export function registerSocketHandlers(): void {
     useUiStore.getState().setAppPhase('lobby')
   })
 
-  socket.on('room:lobby-update', ({ lobbyPlayers, allReady, settings }) => {
+  // Successful reload-rejoin: restore lobby or in-game view.
+  socket.on('room:rejoined', ({ roomCode, gameState, lobbyPlayers, isHost, inGame }) => {
+    useSocketStore.getState().setRoomCode(roomCode)
+    useSocketStore.getState().setIsHost(isHost)
+    saveRoomCode(roomCode)
+    if (lobbyPlayers) useGameStore.getState().setLobbyPlayers(lobbyPlayers)
+    useGameStore.getState().setGameState(gameState ?? null)
+    useUiStore.getState().setAppPhase(inGame ? 'game' : 'lobby')
+    if (inGame) useUiStore.getState().setCameraTarget(null)
+  })
+
+  socket.on('room:rejoin-failed', () => {
+    // The old room is gone (or grace expired) – forget it and stay in the menu.
+    clearSavedRoom()
+  })
+
+  socket.on('room:returned-to-lobby', () => {
+    useGameStore.getState().setGameState(null)
+    useUiStore.getState().closeModal()
+    useUiStore.getState().setAppPhase('lobby')
+  })
+
+  socket.on('room:lobby-update', ({ lobbyPlayers, allReady, settings, hostId }) => {
     useGameStore.getState().setLobbyPlayers(lobbyPlayers)
     useGameStore.getState().setLobbyAllReady(allReady)
     if (settings) useGameStore.getState().setLobbySettings(settings)
+    syncHost(hostId)
   })
 
   socket.on('room:settings-update', ({ settings }) => {
@@ -54,6 +97,7 @@ export function registerSocketHandlers(): void {
   })
 
   socket.on('room:kicked', () => {
+    clearSavedRoom()
     useUiStore.getState().setAppPhase('menu')
     useUiStore.getState().setError('Du wurdest vom Admin aus dem Raum entfernt.')
   })
@@ -87,6 +131,7 @@ export function registerSocketHandlers(): void {
       useUiStore.getState().setCameraTarget(null)
     }
     prevPhase = gameState.gamePhase
+    syncHost(gameState.hostId)
     // Close property modal when: phase leaves 'buying', OR it IS 'buying' but for another player
     const myId = useSocketStore.getState().myPlayerId
     const currentPlayer = gameState.players[gameState.currentPlayerIndex]

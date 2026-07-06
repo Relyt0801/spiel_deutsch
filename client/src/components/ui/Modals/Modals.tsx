@@ -3,6 +3,7 @@ import { useUiStore } from '../../../store/uiStore'
 import { useGameStore } from '../../../store/gameStore'
 import { useSocketStore } from '../../../store/socketStore'
 import { getSocket } from '../../../socket/socketClient'
+import { clearSavedRoom } from '../../../socket/session'
 import { BOARD_SQUARES, PROPERTY_COLOR_HEX, COLOR_GROUPS } from '../../../config/boardData'
 import { EVENT_TITLES } from '../../../config/events'
 import { PLAYER_COLORS } from '../../../types/game'
@@ -15,6 +16,18 @@ export function Modals() {
   const closeModal = useUiStore(s => s.closeModal)
   const gameState = useGameStore(s => s.gameState)
   const myId = useSocketStore(s => s.myPlayerId)
+
+  // Debt settlement is driven straight off game state (survives reloads) and takes
+  // priority over any other modal – the game is blocked until the debt is settled.
+  if (gameState && gameState.gamePhase === 'debt_settlement' && gameState.debt) {
+    return (
+      <div className={styles.overlay}>
+        <div className={styles.modal}>
+          <DebtModal gameState={gameState} myId={myId} />
+        </div>
+      </div>
+    )
+  }
 
   if (!activeModal || !gameState) return null
 
@@ -137,7 +150,7 @@ function OwnerControls({ propertyIndex, gameState, myId }: {
   const me = gameState.players.find(p => p.id === myId)
   const currentPlayer = gameState.players[gameState.currentPlayerIndex]
   const isMyTurn = currentPlayer?.id === myId
-  const canManageNow = isMyTurn && ['rolling', 'end_turn', 'buying'].includes(gameState.gamePhase)
+  const canManageNow = isMyTurn && ['rolling', 'end_turn', 'buying', 'debt_settlement'].includes(gameState.gamePhase)
   const money = me?.money ?? 0
   const houseCost = sq.houseCost ?? 0
   const refund = Math.floor(houseCost / 2)
@@ -315,7 +328,8 @@ function CardModal({ data, closeModal }: CardModalProps) {
 
   useEffect(() => {
     if (!isMyTurn) {
-      const t = setTimeout(() => closeModal(), 4000)
+      // Observers can't click "OK" – leave the card up long enough to read the (longer) text.
+      const t = setTimeout(() => closeModal(), 8000)
       return () => clearTimeout(t)
     }
   }, [isMyTurn, closeModal])
@@ -398,6 +412,8 @@ function AuctionModal({ myId, gameState }: AuctionModalProps) {
   const me = gameState.players.find(p => p.id === myId)
   const minBid = auction.highestBid + 1
   const numBid = parseInt(bidAmount) || 0
+  // Spieler ohne genug Geld für das Mindestgebot können nicht mitbieten.
+  const canAffordMinBid = !!me && me.money >= minBid
 
   const handleBid = () => {
     if (numBid >= minBid && me && numBid <= me.money) {
@@ -443,31 +459,129 @@ function AuctionModal({ myId, gameState }: AuctionModalProps) {
       )}
 
       {!alreadyPassed && me && (
-        <div className={styles.bidInputRow}>
-          <input
-            type="number"
-            className={styles.bidInput}
-            value={bidAmount}
-            placeholder={`Min. ${minBid}€`}
-            min={minBid}
-            max={me.money}
-            disabled={me.money < minBid}
-            onChange={e => setBidAmount(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleBid()}
-          />
-          <button className={styles.btnBuy}
-            disabled={numBid < minBid || numBid > me.money}
-            onClick={handleBid}>
-            💰 Bieten
-          </button>
-          <button className={styles.btnAuction} onClick={() => getSocket().emit('auction:pass')}>
-            🚫 Passen
-          </button>
-        </div>
+        <>
+          {!canAffordMinBid && (
+            <p className={styles.warnHint}>
+              💸 Du hast nur {me.money.toLocaleString('de-DE')}€ – das reicht nicht für das
+              Mindestgebot von {minBid}€. Du kannst diese Auktion nur passen.
+            </p>
+          )}
+          <div className={styles.bidInputRow}>
+            <input
+              type="number"
+              className={styles.bidInput}
+              value={bidAmount}
+              placeholder={`Min. ${minBid}€`}
+              min={minBid}
+              max={me.money}
+              disabled={!canAffordMinBid}
+              onChange={e => setBidAmount(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleBid()}
+            />
+            <button className={styles.btnBuy}
+              disabled={!canAffordMinBid || numBid < minBid || numBid > me.money}
+              onClick={handleBid}>
+              💰 Bieten
+            </button>
+            <button className={styles.btnAuction} onClick={() => getSocket().emit('auction:pass')}>
+              🚫 Passen
+            </button>
+          </div>
+        </>
       )}
       {alreadyPassed && (
-        <p className={styles.smallText}>Du hast gepasst. Warte auf das Ende der Auktion...</p>
+        <p className={styles.smallText}>
+          {me && me.money <= auction.highestBid
+            ? `💸 Zu wenig Geld (du hast ${me.money.toLocaleString('de-DE')}€) – automatisch gepasst. Warte auf das Ende…`
+            : 'Du hast gepasst. Warte auf das Ende der Auktion…'}
+        </p>
       )}
+    </div>
+  )
+}
+
+// ─── Debt settlement (Zwangsverkauf) ────────────────────────────────────────────
+
+function DebtModal({ gameState, myId }: { gameState: GameState; myId: string | null }) {
+  const debt = gameState.debt!
+  const debtor = gameState.players.find(p => p.id === debt.debtorId)
+  const isDebtor = myId === debt.debtorId
+  const me = gameState.players.find(p => p.id === myId)
+  const money = me?.money ?? 0
+  const shortfall = Math.max(0, debt.amount - money)
+
+  if (!isDebtor) {
+    return (
+      <div>
+        <h2 className={styles.modalTitle}>💸 Zahlung offen</h2>
+        <p className={styles.auctionProp}>
+          {debtor?.name} muss {debt.amount.toLocaleString('de-DE')}€ aufbringen ({debt.reason}).
+        </p>
+        <p className={styles.smallText}>Warte, bis {debtor?.name} Häuser/Straßen verkauft hat…</p>
+      </div>
+    )
+  }
+
+  const myProps = gameState.properties.filter(p => p.ownerId === myId)
+  const canPay = money >= debt.amount
+  const sell = (idx: number, hotel: boolean) =>
+    getSocket().emit(hotel ? 'game:sell-hotel' : 'game:sell-house', { propertyIndex: idx })
+  const mort = (idx: number) => getSocket().emit('game:mortgage', { propertyIndex: idx })
+
+  return (
+    <div>
+      <h2 className={styles.modalTitle}>💸 Du schuldest {debt.amount.toLocaleString('de-DE')}€</h2>
+      <p className={styles.auctionProp}>{debt.reason}</p>
+      <div className={styles.auctionMeta}>
+        <span>Bargeld: <strong>{money.toLocaleString('de-DE')}€</strong></span>
+        <span>Noch offen: <strong style={{ color: shortfall > 0 ? '#ff6b6b' : '#4caf50' }}>
+          {shortfall.toLocaleString('de-DE')}€</strong></span>
+      </div>
+      <p className={styles.warnHint}>
+        {canPay
+          ? '✅ Du hast genug Geld – bezahle, um weiterzuspielen.'
+          : 'Verkaufe Klassenräume/Schulgebäude oder nimm Hypotheken auf, bis du zahlen kannst.'}
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '38vh', overflowY: 'auto', margin: '10px 0' }}>
+        {myProps.length === 0 && <p className={styles.smallText}>Kein Besitz zum Verkaufen.</p>}
+        {myProps.map(p => {
+          const sq = BOARD_SQUARES[p.boardIndex]
+          const refund = Math.floor((sq.houseCost ?? 0) / 2)
+          const hasBuilding = p.hotel || p.houses > 0
+          const canMortgage = !p.isMortgaged && !hasBuilding
+          return (
+            <div key={p.boardIndex} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ flex: 1, fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {sq.name.replace('\n', ' ')}
+              </span>
+              {hasBuilding && (
+                <button className={styles.mSell} onClick={() => sell(p.boardIndex, p.hotel)}>
+                  {p.hotel ? '🏨' : '🏠'} +{refund}€
+                </button>
+              )}
+              {canMortgage && (
+                <button className={styles.mMort} onClick={() => mort(p.boardIndex)}>
+                  🔒 +{sq.mortgageValue}€
+                </button>
+              )}
+              {p.isMortgaged && !hasBuilding && (
+                <span className={styles.smallText} style={{ opacity: 0.6 }}>verpfändet</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <div className={styles.bidInputRow}>
+        <button className={styles.btnBuy} disabled={!canPay} onClick={() => getSocket().emit('game:settle-debt')}>
+          💰 {debt.amount.toLocaleString('de-DE')}€ bezahlen
+        </button>
+        <button className={styles.btnAuction}
+          onClick={() => { if (window.confirm('Wirklich aufgeben (Bankrott)?')) getSocket().emit('game:declare-bankruptcy') }}>
+          🏳️ Aufgeben
+        </button>
+      </div>
     </div>
   )
 }
@@ -779,33 +893,65 @@ interface WinnerModalProps {
 }
 
 function WinnerModal({ gameState, closeModal }: WinnerModalProps) {
+  const isHost = useSocketStore(s => s.isHost)
   const winner = gameState.players.find(p => p.id === gameState.winnerId)
+
+  // Leaderboard by total assets (cash + un-mortgaged property + buildings).
+  const assets = (p: GameState['players'][number]) => {
+    let total = p.money
+    for (const idx of p.properties) {
+      const sq = BOARD_SQUARES[idx]
+      const ps = gameState.properties[idx]
+      if (!sq || !ps) continue
+      if (!ps.isMortgaged) total += sq.price ?? 0
+      const hc = sq.houseCost ?? 0
+      total += ps.houses * hc + (ps.hotel ? hc * 5 : 0)
+    }
+    return total
+  }
   const sorted = [...gameState.players].sort((a, b) => {
     if (a.isBankrupt && !b.isBankrupt) return 1
     if (!a.isBankrupt && b.isBankrupt) return -1
-    return b.money - a.money
+    return assets(b) - assets(a)
   })
+  const medal = ['🥇', '🥈', '🥉']
+
+  const playAgain = () => { getSocket().emit('room:play-again'); closeModal() }
+  const toMenu = () => {
+    getSocket().emit('room:leave')
+    clearSavedRoom()
+    useGameStore.getState().clearGame()
+    useUiStore.getState().setAppPhase('menu')
+    closeModal()
+  }
 
   return (
     <div className={styles.winnerModal}>
       <div className={styles.winnerEmoji}>🏆</div>
       <h2 className={styles.winnerTitle}>{winner?.name} hat gewonnen!</h2>
-      <p className={styles.winnerText}>Herzlichen Glückwunsch! Das Remigianum Monopoly ist entschieden.</p>
+      <p className={styles.winnerText}>Endstand des Remigianum Monopoly:</p>
 
       <div className={styles.standings}>
         {sorted.map((p, rank) => (
-          <div key={p.id} className={`${styles.standingRow} ${p.isBankrupt ? styles.bankrupt : ''}`}>
-            <span className={styles.rank}>{rank + 1}.</span>
+          <div key={p.id} className={`${styles.standingRow} ${p.isBankrupt ? styles.bankrupt : ''} ${rank === 0 && !p.isBankrupt ? styles.standingTop : ''}`}>
+            <span className={styles.rank}>{!p.isBankrupt && medal[rank] ? medal[rank] : `${rank + 1}.`}</span>
             <div className={styles.standingDot} style={{ background: PLAYER_COLORS[p.color] || '#ccc' }} />
             <span className={styles.standingName}>{p.name}</span>
             <span className={styles.standingMoney}>
-              {p.isBankrupt ? '💸 Bankrott' : `${p.money.toLocaleString('de-DE')}€`}
+              {p.isBankrupt ? '💸 Bankrott' : `${assets(p).toLocaleString('de-DE')}€`}
             </span>
           </div>
         ))}
       </div>
 
-      <button className={styles.btnClose} onClick={closeModal}>Neues Spiel</button>
+      <div className={styles.btnRow}>
+        {isHost ? (
+          <button className={styles.btnBuy} onClick={playAgain}>🔁 Noch eine Runde</button>
+        ) : (
+          <span className={styles.smallText}>Warte auf den Host für eine neue Runde…</span>
+        )}
+        <button className={styles.btnEnd} onClick={toMenu}>🏠 Hauptmenü</button>
+      </div>
     </div>
   )
 }

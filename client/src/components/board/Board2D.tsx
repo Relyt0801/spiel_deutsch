@@ -219,9 +219,9 @@ export function Board2D() {
     properties.find(p => p.boardIndex === index)
 
   const currentPlayer = gameState ? gameState.players[gameState.currentPlayerIndex] : null
-  // Tablets & desktop show the full info panel in the board centre (turn, players,
-  // money, log) for every game type. Small phones get a compact left leaderboard instead.
-  const showCenterInfo = Math.min(viewport.w, viewport.h) >= 600
+  // Show the in-board info panel whenever the board is big enough to read it.
+  // (Kept in sync with HUD's `isCompact` so exactly one of the two is visible.)
+  const showCenterInfo = viewport.w >= 760 && viewport.h >= 640
 
   return (
     <div className={styles.viewport}>
@@ -274,7 +274,7 @@ export function Board2D() {
                   {players.map((p, i) => (
                     <div key={p.id} className={`${styles.playerRow} ${i === gameState.currentPlayerIndex ? styles.playerActive : ''} ${p.isBankrupt ? styles.playerBankrupt : ''}`}>
                       <div className={styles.playerDot} style={{ background: PLAYER_COLORS[p.color as keyof typeof PLAYER_COLORS] || '#888' }} />
-                      <span className={styles.playerName}>{p.name}{p.id === myId ? ' (Du)' : ''}</span>
+                      <span className={styles.playerName}>{p.name}{p.id === myId ? ' (Du)' : ''}{p.disconnected ? ' 🔌' : ''}</span>
                       <span className={styles.playerMoney}>💰 {p.money.toLocaleString('de-DE')}€</span>
                     </div>
                   ))}

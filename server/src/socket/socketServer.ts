@@ -9,10 +9,27 @@ export function setupSocketHandlers(io: Server): void {
     logger.info(`Socket connected: ${socket.id}`)
 
     // ─── ROOM MANAGEMENT ────────────────────────────────────────────────
-    socket.on('room:create', ({ playerName, color, piece }) => {
-      const room = roomManager.createRoom(socket.id, playerName, color, piece)
+    socket.on('room:create', ({ playerName, color, piece, clientToken }) => {
+      const room = roomManager.createRoom(socket.id, playerName, color, piece, clientToken)
       socket.join(room.code)
       socket.emit('room:created', { roomCode: room.code, gameState: room.state, lobbyPlayers: room.getLobbyWithStatus() })
+    })
+
+    // Reload / lost-connection recovery: re-attach to the old slot via the stable token.
+    socket.on('room:rejoin', ({ roomCode, clientToken }) => {
+      const room = roomManager.getRoomByCode(roomCode)
+      if (!room) { socket.emit('room:rejoin-failed', {}); return }
+      const res = room.reconnectPlayer(socket.id, clientToken)
+      if (!res) { socket.emit('room:rejoin-failed', {}); return }
+      roomManager.attachSocket(socket.id, room.code)
+      socket.join(room.code)
+      socket.emit('room:rejoined', {
+        roomCode: room.code,
+        gameState: room.state,
+        lobbyPlayers: room.getLobbyWithStatus(),
+        isHost: res.isHost,
+        inGame: res.inGame,
+      })
     })
 
     socket.on('room:peek', ({ roomCode }) => {
@@ -27,7 +44,7 @@ export function setupSocketHandlers(io: Server): void {
       })
     })
 
-    socket.on('room:join', ({ roomCode, playerName, color, piece }) => {
+    socket.on('room:join', ({ roomCode, playerName, color, piece, clientToken }) => {
       const existingRoom = roomManager.getRoomByCode(roomCode)
       if (existingRoom && !existingRoom.state) {
         if (existingRoom.lobbyPlayers.some(p => p.piece === piece)) {
@@ -39,7 +56,7 @@ export function setupSocketHandlers(io: Server): void {
           return
         }
       }
-      const room = roomManager.joinRoom(roomCode, socket.id, playerName, color, piece)
+      const room = roomManager.joinRoom(roomCode, socket.id, playerName, color, piece, clientToken)
       if (!room) {
         socket.emit('room:error', { message: 'Raum nicht gefunden oder voll.' })
         return
@@ -53,11 +70,20 @@ export function setupSocketHandlers(io: Server): void {
     })
 
     socket.on('room:leave', () => {
-      const room = roomManager.leaveRoom(socket.id)
+      const room = roomManager.getRoomBySocket(socket.id)
       if (room) {
-        socket.leave(room.code)
-        socket.to(room.code).emit('room:player-left', { playerId: socket.id, gameState: room.state })
+        const code = room.code
+        room.handleExplicitLeave(socket.id) // immediate – no grace
+        roomManager.detachSocket(socket.id)
+        socket.leave(code)
+        socket.to(code).emit('room:player-left', { playerId: socket.id, gameState: room.state })
       }
+    })
+
+    // Host restarts a new round in the same lobby after a game ends.
+    socket.on('room:play-again', () => {
+      const room = roomManager.getRoomBySocket(socket.id)
+      room?.resetToLobby(socket.id)
     })
 
     socket.on('room:toggle-ready', () => {
@@ -221,7 +247,12 @@ export function setupSocketHandlers(io: Server): void {
       room?.handleConfirmTrade(socket.id, tradeId)
     })
 
-    // ─── BANKRUPTCY ──────────────────────────────────────────────────────
+    // ─── DEBT / BANKRUPTCY ───────────────────────────────────────────────
+    socket.on('game:settle-debt', () => {
+      const room = roomManager.getRoomBySocket(socket.id)
+      room?.handleSettleDebt(socket.id)
+    })
+
     socket.on('game:declare-bankruptcy', () => {
       const room = roomManager.getRoomBySocket(socket.id)
       room?.handleDeclareBankruptcy(socket.id)
@@ -230,9 +261,11 @@ export function setupSocketHandlers(io: Server): void {
     // ─── DISCONNECT ──────────────────────────────────────────────────────
     socket.on('disconnect', () => {
       logger.info(`Socket disconnected: ${socket.id}`)
-      const room = roomManager.leaveRoom(socket.id)
+      const room = roomManager.getRoomBySocket(socket.id)
       if (room) {
-        socket.to(room.code).emit('room:player-left', { playerId: socket.id, gameState: room.state })
+        // Keep the slot alive for the grace period so a reload can rejoin.
+        room.handleDisconnect(socket.id)
+        roomManager.detachSocket(socket.id)
       }
     })
   })
