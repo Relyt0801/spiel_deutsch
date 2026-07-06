@@ -16,6 +16,16 @@ export type GamePhase =
   | 'building'
   | 'end_turn'
   | 'game_over'
+  | 'debt_settlement'
+
+/** An open debt the current player must cover by selling/mortgaging before continuing. */
+export interface DebtInfo {
+  debtorId: string
+  amount: number
+  creditorId: string | null
+  toParkingPot: boolean
+  reason: string
+}
 
 export interface Player {
   id: string
@@ -128,6 +138,7 @@ export interface GameState {
   winnerId: string | null
   freeParkingMoney: number
   settings: GameSettings
+  debt: DebtInfo | null
 }
 
 export const STARTING_MONEY = 1500

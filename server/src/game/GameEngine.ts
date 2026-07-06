@@ -72,7 +72,16 @@ export interface GameLog {
 export type GamePhase =
   | 'lobby' | 'rolling' | 'moving' | 'landed' | 'buying'
   | 'auctioning' | 'paying_rent' | 'card_drawn' | 'jail_decision'
-  | 'trading' | 'building' | 'end_turn' | 'game_over'
+  | 'trading' | 'building' | 'end_turn' | 'game_over' | 'debt_settlement'
+
+/** An open debt the current player must cover by selling/mortgaging before continuing. */
+export interface DebtInfo {
+  debtorId: string
+  amount: number
+  creditorId: string | null // null → bank / free-parking pot
+  toParkingPot: boolean
+  reason: string
+}
 
 export type BankruptcyMode = 'creditorAll' | 'creditorMoney' | 'release' | 'auction'
 
@@ -111,6 +120,7 @@ export interface GameState {
   winnerId: string | null
   freeParkingMoney: number
   settings: GameSettings
+  debt: DebtInfo | null
 }
 
 function shuffle<T>(arr: T[]): T[] {
@@ -184,6 +194,7 @@ export function initGameState(
     winnerId: null,
     freeParkingMoney: 0,
     settings,
+    debt: null,
   }
 }
 
@@ -243,10 +254,54 @@ export function raiseCash(state: GameState, playerId: string, target: number): G
   return s
 }
 
+/** Move `amount` from the debtor to a creditor (or the free-parking pot / bank). */
+function applyPayment(
+  state: GameState, debtorId: string, amount: number,
+  creditorId: string | null, toParkingPot: boolean,
+): GameState {
+  const s = { ...state }
+  s.players = s.players.map(p => {
+    if (p.id === debtorId) return { ...p, money: p.money - amount }
+    if (creditorId && p.id === creditorId) return { ...p, money: p.money + amount }
+    return p
+  })
+  if (toParkingPot) s.freeParkingMoney += amount
+  return s
+}
+
 /**
- * Player pays `amount` to the bank / free-parking pot. If they are short on cash the
- * server liquidates their assets first; if their whole net worth still can't cover it
- * they go bankrupt (to the bank). Returns the new state plus whether they went bankrupt.
+ * Require `debtorId` to pay `amount`. Pays immediately when they hold the cash; bots and
+ * insolvent players are resolved automatically (auto-liquidate / bankruptcy); a solvent
+ * human who is short on cash is put into 'debt_settlement' so THEY choose what to sell.
+ */
+export function beginPayment(
+  state: GameState, debtorId: string, amount: number,
+  creditorId: string | null, toParkingPot: boolean, reason: string,
+): { state: GameState; status: 'paid' | 'settle' | 'bankrupt' } {
+  let s = { ...state }
+  if (amount <= 0) return { state: s, status: 'paid' }
+  const debtor = s.players.find(p => p.id === debtorId)!
+  if (netWorth(s, debtorId) < amount) {
+    s = declareBankruptcy(s, debtorId, creditorId, s.settings.bankruptcyMode)
+    return { state: s, status: 'bankrupt' }
+  }
+  if (debtor.money >= amount) {
+    return { state: applyPayment(s, debtorId, amount, creditorId, toParkingPot), status: 'paid' }
+  }
+  if (debtor.isBot) {
+    // Bots liquidate automatically – no dialog.
+    s = raiseCash(s, debtorId, amount)
+    return { state: applyPayment(s, debtorId, amount, creditorId, toParkingPot), status: 'paid' }
+  }
+  // Solvent human, short on cash → let them sell/mortgage themselves.
+  s = { ...s, debt: { debtorId, amount, creditorId, toParkingPot, reason }, gamePhase: 'debt_settlement' }
+  return { state: s, status: 'settle' }
+}
+
+/**
+ * Pay to the bank / free-parking pot, auto-liquidating first. Used by card effects,
+ * where opening a manual dialog mid-card would be awkward. Returns whether the player
+ * went bankrupt.
  */
 export function payToBank(
   state: GameState,
@@ -254,16 +309,37 @@ export function payToBank(
   amount: number,
   toParkingPot: boolean,
 ): { state: GameState; bankrupt: boolean } {
-  let s = { ...state }
-  if (amount <= 0) return { state: s, bankrupt: false }
-  if (netWorth(s, playerId) < amount) {
-    s = declareBankruptcy(s, playerId, null, s.settings.bankruptcyMode)
-    return { state: s, bankrupt: true }
+  const res = beginPayment(state, playerId, amount, null, toParkingPot, 'Karte')
+  if (res.status === 'settle') {
+    // Card debts are never left open – liquidate immediately.
+    return { state: forceSettleDebt(res.state), bankrupt: false }
   }
-  s = raiseCash(s, playerId, amount)
-  s.players = s.players.map(p => p.id === playerId ? { ...p, money: p.money - amount } : p)
-  if (toParkingPot) s.freeParkingMoney += amount
-  return { state: s, bankrupt: false }
+  return { state: res.state, bankrupt: res.status === 'bankrupt' }
+}
+
+/** Finalize a manual debt settlement once the debtor has raised enough cash. */
+export function settleDebt(state: GameState): GameState {
+  const d = state.debt
+  if (!d) return state
+  let s = applyPayment(state, d.debtorId, d.amount, d.creditorId, d.toParkingPot)
+  const debtor = s.players.find(p => p.id === d.debtorId)
+  const creditor = d.creditorId ? s.players.find(p => p.id === d.creditorId) : null
+  const to = creditor ? `an ${creditor.name}` : d.toParkingPot ? 'in die Freie Pause' : 'an die Bank'
+  s = addLog(s, `${debtor?.name} zahlt ${d.amount}€ ${to} (${d.reason}).`, 'warning')
+  return { ...s, debt: null, gamePhase: 'end_turn' }
+}
+
+/** Auto-liquidate then settle (fallback for a timeout or a disconnected debtor). */
+export function forceSettleDebt(state: GameState): GameState {
+  const d = state.debt
+  if (!d) return state
+  let s = { ...state }
+  if (netWorth(s, d.debtorId) < d.amount) {
+    s = declareBankruptcy(s, d.debtorId, d.creditorId, s.settings.bankruptcyMode)
+    return { ...s, debt: null }
+  }
+  s = raiseCash(s, d.debtorId, d.amount)
+  return settleDebt(s)
 }
 
 export function rollDice(): DiceRoll {
@@ -344,11 +420,15 @@ export function applyLanding(state: GameState, playerId: string): {
 
   if (square.type === 'tax') {
     const amount = square.price || 0
-    // Forces the sale of buildings/streets; only truly insolvent players go bankrupt.
-    const res = payToBank(s, playerId, amount, true)
-    s = res.state
-    if (res.bankrupt) {
+    const reason = `Steuer (${square.name})`
+    const pay = beginPayment(s, playerId, amount, null, true, reason)
+    s = pay.state
+    if (pay.status === 'bankrupt') {
       return { newState: s, event: 'game:player-bankrupt', data: { playerId } }
+    }
+    if (pay.status === 'settle') {
+      // Short on cash but solvent → player must sell/mortgage before continuing.
+      return { newState: s, event: 'game:debt-due', data: { debtorId: playerId, amount, creditorId: null, reason } }
     }
     s = addLog(s, `${player.name} zahlt ${amount}€ Steuer (${square.name}).`, 'warning')
     s.gamePhase = 'end_turn'
@@ -381,17 +461,21 @@ export function applyLanding(state: GameState, playerId: string): {
     }
     // Calculate rent
     const rent = calculateRent(s, player.position, s.currentDiceRoll?.total || 2)
-    // Can't pay even after liquidating everything → bankrupt to the property owner.
-    if (netWorth(s, playerId) < rent) {
-      const ownerId = propState.ownerId
-      s = declareBankruptcy(s, playerId, ownerId, s.settings.bankruptcyMode)
+    const ownerId = propState.ownerId
+    const reason = `Miete für ${square.name}`
+    const pay = beginPayment(s, playerId, rent, ownerId, false, reason)
+    s = pay.state
+    if (pay.status === 'bankrupt') {
       return { newState: s, event: 'game:player-bankrupt', data: { playerId, creditorId: ownerId } }
     }
-    // Short on cash but solvent → force-sell buildings/mortgage streets, then pay in full.
-    if (player.money < rent) s = raiseCash(s, playerId, rent)
-    s = payRent(s, playerId, propState.ownerId, rent)
+    if (pay.status === 'settle') {
+      // Short on cash but solvent → player must sell/mortgage before paying.
+      return { newState: s, event: 'game:debt-due', data: { debtorId: playerId, amount: rent, creditorId: ownerId, reason } }
+    }
+    const owner = s.players.find(p => p.id === ownerId)
+    s = addLog(s, `${player.name} zahlt ${rent}€ Miete an ${owner?.name} für ${square.name}.`, 'warning')
     s.gamePhase = 'end_turn'
-    return { newState: s, event: 'game:landed-property', data: { propertyIndex: player.position, ownerId: propState.ownerId, rentDue: rent, canBuy: false } }
+    return { newState: s, event: 'game:landed-property', data: { propertyIndex: player.position, ownerId, rentDue: rent, canBuy: false } }
   }
 
   s.gamePhase = 'end_turn'

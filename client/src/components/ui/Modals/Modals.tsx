@@ -17,6 +17,18 @@ export function Modals() {
   const gameState = useGameStore(s => s.gameState)
   const myId = useSocketStore(s => s.myPlayerId)
 
+  // Debt settlement is driven straight off game state (survives reloads) and takes
+  // priority over any other modal – the game is blocked until the debt is settled.
+  if (gameState && gameState.gamePhase === 'debt_settlement' && gameState.debt) {
+    return (
+      <div className={styles.overlay}>
+        <div className={styles.modal}>
+          <DebtModal gameState={gameState} myId={myId} />
+        </div>
+      </div>
+    )
+  }
+
   if (!activeModal || !gameState) return null
 
   const isWide = activeModal === 'trade'
@@ -138,7 +150,7 @@ function OwnerControls({ propertyIndex, gameState, myId }: {
   const me = gameState.players.find(p => p.id === myId)
   const currentPlayer = gameState.players[gameState.currentPlayerIndex]
   const isMyTurn = currentPlayer?.id === myId
-  const canManageNow = isMyTurn && ['rolling', 'end_turn', 'buying'].includes(gameState.gamePhase)
+  const canManageNow = isMyTurn && ['rolling', 'end_turn', 'buying', 'debt_settlement'].includes(gameState.gamePhase)
   const money = me?.money ?? 0
   const houseCost = sq.houseCost ?? 0
   const refund = Math.floor(houseCost / 2)
@@ -484,6 +496,92 @@ function AuctionModal({ myId, gameState }: AuctionModalProps) {
             : 'Du hast gepasst. Warte auf das Ende der Auktion…'}
         </p>
       )}
+    </div>
+  )
+}
+
+// ─── Debt settlement (Zwangsverkauf) ────────────────────────────────────────────
+
+function DebtModal({ gameState, myId }: { gameState: GameState; myId: string | null }) {
+  const debt = gameState.debt!
+  const debtor = gameState.players.find(p => p.id === debt.debtorId)
+  const isDebtor = myId === debt.debtorId
+  const me = gameState.players.find(p => p.id === myId)
+  const money = me?.money ?? 0
+  const shortfall = Math.max(0, debt.amount - money)
+
+  if (!isDebtor) {
+    return (
+      <div>
+        <h2 className={styles.modalTitle}>💸 Zahlung offen</h2>
+        <p className={styles.auctionProp}>
+          {debtor?.name} muss {debt.amount.toLocaleString('de-DE')}€ aufbringen ({debt.reason}).
+        </p>
+        <p className={styles.smallText}>Warte, bis {debtor?.name} Häuser/Straßen verkauft hat…</p>
+      </div>
+    )
+  }
+
+  const myProps = gameState.properties.filter(p => p.ownerId === myId)
+  const canPay = money >= debt.amount
+  const sell = (idx: number, hotel: boolean) =>
+    getSocket().emit(hotel ? 'game:sell-hotel' : 'game:sell-house', { propertyIndex: idx })
+  const mort = (idx: number) => getSocket().emit('game:mortgage', { propertyIndex: idx })
+
+  return (
+    <div>
+      <h2 className={styles.modalTitle}>💸 Du schuldest {debt.amount.toLocaleString('de-DE')}€</h2>
+      <p className={styles.auctionProp}>{debt.reason}</p>
+      <div className={styles.auctionMeta}>
+        <span>Bargeld: <strong>{money.toLocaleString('de-DE')}€</strong></span>
+        <span>Noch offen: <strong style={{ color: shortfall > 0 ? '#ff6b6b' : '#4caf50' }}>
+          {shortfall.toLocaleString('de-DE')}€</strong></span>
+      </div>
+      <p className={styles.warnHint}>
+        {canPay
+          ? '✅ Du hast genug Geld – bezahle, um weiterzuspielen.'
+          : 'Verkaufe Klassenräume/Schulgebäude oder nimm Hypotheken auf, bis du zahlen kannst.'}
+      </p>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '38vh', overflowY: 'auto', margin: '10px 0' }}>
+        {myProps.length === 0 && <p className={styles.smallText}>Kein Besitz zum Verkaufen.</p>}
+        {myProps.map(p => {
+          const sq = BOARD_SQUARES[p.boardIndex]
+          const refund = Math.floor((sq.houseCost ?? 0) / 2)
+          const hasBuilding = p.hotel || p.houses > 0
+          const canMortgage = !p.isMortgaged && !hasBuilding
+          return (
+            <div key={p.boardIndex} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ flex: 1, fontSize: '0.85rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {sq.name.replace('\n', ' ')}
+              </span>
+              {hasBuilding && (
+                <button className={styles.mSell} onClick={() => sell(p.boardIndex, p.hotel)}>
+                  {p.hotel ? '🏨' : '🏠'} +{refund}€
+                </button>
+              )}
+              {canMortgage && (
+                <button className={styles.mMort} onClick={() => mort(p.boardIndex)}>
+                  🔒 +{sq.mortgageValue}€
+                </button>
+              )}
+              {p.isMortgaged && !hasBuilding && (
+                <span className={styles.smallText} style={{ opacity: 0.6 }}>verpfändet</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      <div className={styles.bidInputRow}>
+        <button className={styles.btnBuy} disabled={!canPay} onClick={() => getSocket().emit('game:settle-debt')}>
+          💰 {debt.amount.toLocaleString('de-DE')}€ bezahlen
+        </button>
+        <button className={styles.btnAuction}
+          onClick={() => { if (window.confirm('Wirklich aufgeben (Bankrott)?')) getSocket().emit('game:declare-bankruptcy') }}>
+          🏳️ Aufgeben
+        </button>
+      </div>
     </div>
   )
 }

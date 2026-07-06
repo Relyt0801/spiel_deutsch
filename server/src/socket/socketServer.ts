@@ -247,7 +247,12 @@ export function setupSocketHandlers(io: Server): void {
       room?.handleConfirmTrade(socket.id, tradeId)
     })
 
-    // ─── BANKRUPTCY ──────────────────────────────────────────────────────
+    // ─── DEBT / BANKRUPTCY ───────────────────────────────────────────────
+    socket.on('game:settle-debt', () => {
+      const room = roomManager.getRoomBySocket(socket.id)
+      room?.handleSettleDebt(socket.id)
+    })
+
     socket.on('game:declare-bankruptcy', () => {
       const room = roomManager.getRoomBySocket(socket.id)
       room?.handleDeclareBankruptcy(socket.id)

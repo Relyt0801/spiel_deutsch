@@ -5,6 +5,7 @@ import {
   buyHouse, buyHotel, sellHouse, sellHotel, sellAllBuildings, mortgage, unmortgage, proposeTrade,
   counterTrade, confirmTrade,
   declareBankruptcy, handleEndTurn, advanceTurn, applyCardEffect, sendToJail,
+  settleDebt, forceSettleDebt,
   DEFAULT_SETTINGS,
 } from './GameEngine'
 import type { TradeOffer, DiceRoll, GameSettings, GamePhase } from './GameEngine'
@@ -24,6 +25,8 @@ export type LobbyPlayer = {
 
 /** Grace period (ms) a reloading player has to rejoin before being removed. */
 export const RECONNECT_GRACE_MS = 45_000
+/** How long a connected player may take to sell/mortgage before the server auto-settles. */
+export const DEBT_GRACE_MS = 90_000
 
 export class GameRoom {
   code: string
@@ -41,6 +44,7 @@ export class GameRoom {
   private turnTimer: NodeJS.Timeout | null = null
   private turnTimerPlayerId: string | null = null
   private tradeTimer: NodeJS.Timeout | null = null
+  private debtTimer: ReturnType<typeof setTimeout> | null = null
   private botAuctionVals: Record<string, number> = {}
   private botAuctionPending: Set<string> = new Set()
   private tradeCounterRounds = 0
@@ -264,6 +268,7 @@ export class GameRoom {
     if (this.auctionTimer) { clearInterval(this.auctionTimer); this.auctionTimer = null }
     this.clearTurnTimer()
     this.clearTradeTimer()
+    this.clearDebtTimer()
     for (const t of this.pendingBotTimers) clearTimeout(t)
     this.pendingBotTimers.clear()
     for (const t of this.disconnectTimers.values()) clearTimeout(t)
@@ -334,7 +339,48 @@ export class GameRoom {
   broadcastState(): void {
     this.broadcast('game:state-update', { gameState: this.state })
     this.manageTurnTimer()
+    this.manageDebtTimer()
     this.scheduleBotAction()
+  }
+
+  // ─── Debt settlement (forced sell/mortgage) ───────────────────────────────
+
+  /** While a human owes money, give them time to sell; auto-settle on timeout. */
+  private manageDebtTimer(): void {
+    if (!this.state || this.state.gamePhase !== 'debt_settlement' || !this.state.debt) {
+      this.clearDebtTimer()
+      return
+    }
+    const debtor = this.state.players.find(p => p.id === this.state!.debt!.debtorId)
+    // Bots and disconnected players are settled by the server-driven auto-player.
+    if (debtor?.isBot || debtor?.disconnected) return
+    if (!this.debtTimer) {
+      this.debtTimer = setTimeout(() => {
+        this.debtTimer = null
+        if (this.state?.gamePhase === 'debt_settlement') {
+          this.state = forceSettleDebt(this.state)
+          this.broadcastState()
+          this.processAuctionQueue()
+        }
+      }, DEBT_GRACE_MS)
+    }
+  }
+
+  private clearDebtTimer(): void {
+    if (this.debtTimer) { clearTimeout(this.debtTimer); this.debtTimer = null }
+  }
+
+  /** Debtor confirms payment once they have raised enough cash. */
+  handleSettleDebt(socketId: string): void {
+    if (!this.state || this.state.gamePhase !== 'debt_settlement') return
+    const d = this.state.debt
+    if (!d || d.debtorId !== socketId) return
+    const debtor = this.state.players.find(p => p.id === socketId)
+    if (!debtor || debtor.money < d.amount) return // not enough yet – keep selling
+    this.clearDebtTimer()
+    this.state = settleDebt(this.state)
+    this.broadcastState()
+    this.processAuctionQueue()
   }
 
   // ─── Bot AI ───────────────────────────────────────────────────────────────
@@ -926,6 +972,12 @@ export class GameRoom {
       case 'jail_decision':
         this.handleJailAction(playerId, player.getOutOfJailCards > 0 ? 'card' : player.money >= 50 ? 'pay' : 'roll')
         break
+      case 'debt_settlement':
+        this.clearDebtTimer()
+        this.state = forceSettleDebt(this.state)
+        this.broadcastState()
+        this.processAuctionQueue()
+        break
       case 'end_turn': this.handleEndTurn(playerId); break
     }
   }
@@ -1196,7 +1248,12 @@ export class GameRoom {
   handleDeclareBankruptcy(socketId: string): void {
     if (!this.state) return
     const currentPlayer = this.state.players[this.state.currentPlayerIndex]
-    const creditorId = this.state.properties[currentPlayer.position]?.ownerId || null
+    // Prefer the open debt's creditor (rent/tax); fall back to the current square's owner.
+    const debt = this.state.debt
+    const creditorId = debt?.debtorId === socketId
+      ? debt.creditorId
+      : (this.state.properties[currentPlayer.position]?.ownerId || null)
+    if (debt) { this.clearDebtTimer(); this.state = { ...this.state, debt: null } }
     this.state = declareBankruptcy(this.state, socketId, creditorId, this.settings.bankruptcyMode)
     this.broadcast('game:player-bankrupt', { playerId: socketId, gameState: this.state })
     if (this.state.gamePhase === 'game_over') {

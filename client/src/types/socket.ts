@@ -42,6 +42,7 @@ export interface ClientToServerEvents {
   'trade:confirm': (payload: { tradeId: string }) => void
 
   'game:declare-bankruptcy': () => void
+  'game:settle-debt': () => void
 }
 
 export interface ServerToClientEvents {
@@ -63,6 +64,14 @@ export interface ServerToClientEvents {
   'trade:tick': (payload: { timeRemaining: number }) => void
 
   'game:state-update': (payload: { gameState: GameState }) => void
+
+  'game:debt-due': (payload: {
+    debtorId: string
+    amount: number
+    creditorId: string | null
+    reason: string
+    gameState: GameState
+  }) => void
 
   'game:dice-rolled': (payload: {
     playerId: string
