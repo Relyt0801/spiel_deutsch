@@ -204,6 +204,68 @@ export function netWorth(state: GameState, playerId: string): number {
   return total
 }
 
+/**
+ * Force-liquidate a player's assets until they hold at least `target` cash (or have
+ * nothing left to sell). Buildings are sold first (half the build cost), then streets
+ * are mortgaged. Used to settle a debt the player can cover on paper but not in cash –
+ * this is what actually forces the sale of houses/streets instead of letting the player
+ * limp on at 0 €.
+ */
+export function raiseCash(state: GameState, playerId: string, target: number): GameState {
+  let s = { ...state }
+  const cash = () => s.players.find(p => p.id === playerId)?.money ?? 0
+
+  // 1) Sell buildings, always taking from the property with the most on it first.
+  while (cash() < target) {
+    const player = s.players.find(p => p.id === playerId)!
+    let bestIdx = -1
+    let bestLevel = 0
+    for (const idx of player.properties) {
+      const prop = s.properties[idx]
+      const level = prop.hotel ? 5 : prop.houses
+      if (level > bestLevel) { bestLevel = level; bestIdx = idx }
+    }
+    if (bestIdx < 0) break
+    s = s.properties[bestIdx].hotel ? sellHotel(s, playerId, bestIdx) : sellHouse(s, playerId, bestIdx)
+  }
+
+  // 2) Mortgage building-free streets until the target is met.
+  if (cash() < target) {
+    const player = s.players.find(p => p.id === playerId)!
+    for (const idx of [...player.properties]) {
+      if (cash() >= target) break
+      const prop = s.properties[idx]
+      if (!prop.isMortgaged && prop.houses === 0 && !prop.hotel) {
+        s = mortgage(s, playerId, idx)
+      }
+    }
+  }
+  return s
+}
+
+/**
+ * Player pays `amount` to the bank / free-parking pot. If they are short on cash the
+ * server liquidates their assets first; if their whole net worth still can't cover it
+ * they go bankrupt (to the bank). Returns the new state plus whether they went bankrupt.
+ */
+export function payToBank(
+  state: GameState,
+  playerId: string,
+  amount: number,
+  toParkingPot: boolean,
+): { state: GameState; bankrupt: boolean } {
+  let s = { ...state }
+  if (amount <= 0) return { state: s, bankrupt: false }
+  if (netWorth(s, playerId) < amount) {
+    s = declareBankruptcy(s, playerId, null, s.settings.bankruptcyMode)
+    return { state: s, bankrupt: true }
+  }
+  s = raiseCash(s, playerId, amount)
+  s.players = s.players.map(p => p.id === playerId ? { ...p, money: p.money - amount } : p)
+  if (toParkingPot) s.freeParkingMoney += amount
+  return { state: s, bankrupt: false }
+}
+
 export function rollDice(): DiceRoll {
   const die1 = Math.floor(Math.random() * 6) + 1
   const die2 = Math.floor(Math.random() * 6) + 1
@@ -282,19 +344,15 @@ export function applyLanding(state: GameState, playerId: string): {
 
   if (square.type === 'tax') {
     const amount = square.price || 0
-    // Can't cover it even by liquidating everything → bankrupt to the bank.
-    if (player.money < amount && netWorth(s, playerId) < amount) {
-      s = declareBankruptcy(s, playerId, null, s.settings.bankruptcyMode)
+    // Forces the sale of buildings/streets; only truly insolvent players go bankrupt.
+    const res = payToBank(s, playerId, amount, true)
+    s = res.state
+    if (res.bankrupt) {
       return { newState: s, event: 'game:player-bankrupt', data: { playerId } }
     }
-    const paid = Math.min(amount, player.money)
-    s.players = s.players.map(p =>
-      p.id === playerId ? { ...p, money: p.money - paid } : p
-    )
-    s.freeParkingMoney += paid
-    s = addLog(s, `${player.name} zahlt ${paid}€ Steuer (${square.name}).`, 'warning')
+    s = addLog(s, `${player.name} zahlt ${amount}€ Steuer (${square.name}).`, 'warning')
     s.gamePhase = 'end_turn'
-    return { newState: s, event: 'game:landed-tax', data: { amount: paid } }
+    return { newState: s, event: 'game:landed-tax', data: { amount } }
   }
 
   if (square.type === 'chance') {
@@ -324,11 +382,13 @@ export function applyLanding(state: GameState, playerId: string): {
     // Calculate rent
     const rent = calculateRent(s, player.position, s.currentDiceRoll?.total || 2)
     // Can't pay even after liquidating everything → bankrupt to the property owner.
-    if (player.money < rent && netWorth(s, playerId) < rent) {
+    if (netWorth(s, playerId) < rent) {
       const ownerId = propState.ownerId
       s = declareBankruptcy(s, playerId, ownerId, s.settings.bankruptcyMode)
       return { newState: s, event: 'game:player-bankrupt', data: { playerId, creditorId: ownerId } }
     }
+    // Short on cash but solvent → force-sell buildings/mortgage streets, then pay in full.
+    if (player.money < rent) s = raiseCash(s, playerId, rent)
     s = payRent(s, playerId, propState.ownerId, rent)
     s.gamePhase = 'end_turn'
     return { newState: s, event: 'game:landed-property', data: { propertyIndex: player.position, ownerId: propState.ownerId, rentDue: rent, canBuy: false } }
@@ -502,9 +562,9 @@ export function applyCardEffect(state: GameState, playerId: string): GameState {
       break
     }
     case 'PAY': {
-      s.players = s.players.map((p, i) =>
-        i === pIdx ? { ...p, money: p.money - card.amount! } : p
-      )
+      const res = payToBank(s, playerId, card.amount!, false)
+      s = res.state
+      if (res.bankrupt) return s
       s = addLog(s, `${player.name}: Karte – zahlt ${card.amount}€.`, 'warning')
       break
     }
@@ -523,8 +583,15 @@ export function applyCardEffect(state: GameState, playerId: string): GameState {
     case 'PAY_PLAYERS': {
       const amount = card.amount!
       const activePlayers = s.players.filter(p => p.id !== playerId && p.isActive && !p.isBankrupt)
+      const total = amount * activePlayers.length
+      if (netWorth(s, playerId) < total) {
+        // Can't pay everyone even after liquidating → bankrupt to the bank.
+        s = declareBankruptcy(s, playerId, null, s.settings.bankruptcyMode)
+        return s
+      }
+      if (s.players[pIdx].money < total) s = raiseCash(s, playerId, total)
       s.players = s.players.map((p, i) => {
-        if (i === pIdx) return { ...p, money: p.money - amount * activePlayers.length }
+        if (i === pIdx) return { ...p, money: p.money - total }
         if (p.isActive && !p.isBankrupt) return { ...p, money: p.money + amount }
         return p
       })
@@ -554,9 +621,9 @@ export function applyCardEffect(state: GameState, playerId: string): GameState {
       const houseCount = player.properties.reduce((acc, pi) => acc + s.properties[pi].houses, 0)
       const hotelCount = player.properties.reduce((acc, pi) => acc + (s.properties[pi].hotel ? 1 : 0), 0)
       const total = houseCount * card.house! + hotelCount * card.hotel!
-      s.players = s.players.map((p, i) =>
-        i === pIdx ? { ...p, money: p.money - total } : p
-      )
+      const res = payToBank(s, playerId, total, false)
+      s = res.state
+      if (res.bankrupt) return s
       s = addLog(s, `${player.name}: Gebäudereparatur – zahlt ${total}€.`, 'warning')
       break
     }
@@ -571,10 +638,10 @@ export function applyCardEffect(state: GameState, playerId: string): GameState {
       return newState
     }
     case 'PAY_PARKING': {
-      const paid = Math.min(card.amount!, player.money)
-      s.players = s.players.map((p, i) => i === pIdx ? { ...p, money: p.money - paid } : p)
-      s.freeParkingMoney += paid
-      s = addLog(s, `${player.name}: Karte – zahlt ${paid}€ in die Freie Pause.`, 'warning')
+      const res = payToBank(s, playerId, card.amount!, true)
+      s = res.state
+      if (res.bankrupt) return s
+      s = addLog(s, `${player.name}: Karte – zahlt ${card.amount}€ in die Freie Pause.`, 'warning')
       break
     }
     case 'EACH_PAY_PARKING': {
@@ -613,10 +680,10 @@ export function applyCardEffect(state: GameState, playerId: string): GameState {
         s.players = s.players.map((p, i) => i === pIdx ? { ...p, money: p.money + amt } : p)
         s = addLog(s, `${player.name}: Würfelt ${total} (>10) – erhält ${amt}€!`, 'success')
       } else {
-        const paid = Math.min(amt, player.money)
-        s.players = s.players.map((p, i) => i === pIdx ? { ...p, money: p.money - paid } : p)
-        s.freeParkingMoney += paid
-        s = addLog(s, `${player.name}: Würfelt ${total} (≤10) – zahlt ${paid}€ in die Freie Pause.`, 'warning')
+        const res = payToBank(s, playerId, amt, true)
+        s = res.state
+        if (res.bankrupt) return s
+        s = addLog(s, `${player.name}: Würfelt ${total} (≤10) – zahlt ${amt}€ in die Freie Pause.`, 'warning')
       }
       break
     }

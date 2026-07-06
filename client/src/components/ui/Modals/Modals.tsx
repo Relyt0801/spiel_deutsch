@@ -478,7 +478,11 @@ function AuctionModal({ myId, gameState }: AuctionModalProps) {
         </>
       )}
       {alreadyPassed && (
-        <p className={styles.smallText}>Du hast gepasst. Warte auf das Ende der Auktion...</p>
+        <p className={styles.smallText}>
+          {me && me.money <= auction.highestBid
+            ? `💸 Zu wenig Geld (du hast ${me.money.toLocaleString('de-DE')}€) – automatisch gepasst. Warte auf das Ende…`
+            : 'Du hast gepasst. Warte auf das Ende der Auktion…'}
+        </p>
       )}
     </div>
   )

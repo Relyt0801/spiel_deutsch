@@ -23,7 +23,7 @@ export type LobbyPlayer = {
 }
 
 /** Grace period (ms) a reloading player has to rejoin before being removed. */
-export const RECONNECT_GRACE_MS = 60_000
+export const RECONNECT_GRACE_MS = 45_000
 
 export class GameRoom {
   code: string
@@ -174,8 +174,18 @@ export class GameRoom {
       this.dropPlayer(playerId)
     }, RECONNECT_GRACE_MS))
 
-    if (this.state) this.broadcastState()
-    else this.broadcastLobbyUpdate()
+    if (this.state) {
+      // If they dropped mid-move, finish the move server-side; otherwise broadcastState
+      // hands the turn to the server-driven auto-player so nothing freezes.
+      const cp = this.state.players[this.state.currentPlayerIndex]
+      if (cp?.id === playerId && this.state.gamePhase === 'moving') {
+        this.handleMovementComplete(playerId)
+      } else {
+        this.broadcastState()
+      }
+    } else {
+      this.broadcastLobbyUpdate()
+    }
   }
 
   /** Re-attach a reloaded client (new socket id) to its old slot via the stable token. */
@@ -332,12 +342,14 @@ export class GameRoom {
   private scheduleBotAction(): void {
     if (!this.state) return
     const cp = this.state.players[this.state.currentPlayerIndex]
-    if (!cp?.isBot) return
+    // Bots AND disconnected humans are driven by the server so a turn never stalls.
+    const serverDriven = !!cp && (cp.isBot || (cp.disconnected && !cp.isBankrupt))
+    if (!serverDriven) return
     if (this.state.gamePhase === 'moving') return
 
     const botId = cp.id
     const phase = this.state.gamePhase
-    // Linger on a drawn card so everyone can read it before the bot acknowledges.
+    // Linger on a drawn card so everyone can read it before it is acknowledged.
     const delay = phase === 'rolling' ? 1500 : phase === 'card_drawn' ? 4500 : 1000
 
     const timer = setTimeout(() => {
@@ -345,6 +357,11 @@ export class GameRoom {
       if (!this.state) return
       const current = this.state.players[this.state.currentPlayerIndex]
       if (current?.id !== botId) return
+      // A disconnected human plays a safe minimal turn (never buys, never trades).
+      if (current.disconnected && !current.isBot) {
+        this.autoResolveDisconnectedTurn(botId)
+        return
+      }
 
       switch (this.state.gamePhase) {
         case 'rolling': {
@@ -800,9 +817,10 @@ export class GameRoom {
       }, DICE_ANIM_MS + i * STEP_MS)
     }
 
-    // Bots have no client to report movement completion, so schedule it server-side.
+    // Bots (and disconnected humans) have no client to report movement completion,
+    // so schedule it server-side.
     const mover = this.state.players.find(p => p.id === socketId)
-    if (mover?.isBot) {
+    if (mover?.isBot || mover?.disconnected) {
       const moveTimer = setTimeout(() => {
         this.pendingBotTimers.delete(moveTimer)
         if (this.state?.gamePhase === 'moving') this.handleMovementComplete(socketId)
@@ -843,6 +861,8 @@ export class GameRoom {
     this.startAuctionTimer()
     this.broadcast('auction:started', { auction: this.state.auction, gameState: this.state })
     this.broadcastState()
+    this.autoPassBrokeBidders() // players with 0 € are out before it even starts
+    if (this.resolveAuctionIfDone()) return
     this.startBotAuctionBidding()
   }
 
@@ -891,6 +911,22 @@ export class GameRoom {
       case 'buying': this.handleDeclineProperty(cp.id); break
       case 'card_drawn': this.handleCardAcknowledge(cp.id); break
       case 'end_turn': this.handleEndTurn(cp.id); break
+    }
+  }
+
+  /** Plays one safe step of a disconnected player's turn so the game keeps moving. */
+  private autoResolveDisconnectedTurn(playerId: string): void {
+    if (!this.state) return
+    const player = this.state.players.find(p => p.id === playerId)
+    if (!player) return
+    switch (this.state.gamePhase) {
+      case 'rolling': this.handleRollDice(playerId); break
+      case 'buying': this.handleDeclineProperty(playerId); break // never auto-buy for an absent player
+      case 'card_drawn': this.handleCardAcknowledge(playerId); break
+      case 'jail_decision':
+        this.handleJailAction(playerId, player.getOutOfJailCards > 0 ? 'card' : player.money >= 50 ? 'pay' : 'roll')
+        break
+      case 'end_turn': this.handleEndTurn(playerId); break
     }
   }
 
@@ -946,6 +982,8 @@ export class GameRoom {
         this.broadcast('auction:tick', { timeRemaining: 10 })
       }
       this.broadcast('auction:bid-placed', { playerId: socketId, amount, auction: this.state.auction })
+      // Drop anyone who can no longer afford to outbid, then check if that decided it.
+      this.autoPassBrokeBidders()
       // If everyone else has already passed, the bidder wins right away.
       if (this.resolveAuctionIfDone()) return
       // Let the other bots react to the new highest bid.
@@ -993,6 +1031,32 @@ export class GameRoom {
     this.broadcastState()
     this.processAuctionQueue()
     return true
+  }
+
+  /**
+   * Auto-pass every active bidder who can no longer outbid the current high bid.
+   * A player needs more than `highestBid` to place a valid bid, so anyone at or below
+   * it is out anyway – this passes them automatically instead of forcing a manual click.
+   */
+  private autoPassBrokeBidders(): void {
+    if (!this.state?.auction) return
+    const broke = this.state.players.filter(p =>
+      p.isActive && !p.isBankrupt &&
+      p.id !== this.state!.auction!.highestBidderId &&
+      !this.state!.auction!.passedPlayers.includes(p.id) &&
+      // Can't outbid the current high bid, or isn't here to bid at all.
+      (p.money <= this.state!.auction!.highestBid || p.disconnected)
+    )
+    for (const p of broke) {
+      this.state = passAuction(this.state!, p.id)
+      if (!this.state.auction) return
+      this.broadcast('auction:bid-placed', {
+        playerId: p.id,
+        amount: this.state.auction.highestBid,
+        auction: this.state.auction,
+      })
+    }
+    if (broke.length > 0) this.broadcastState()
   }
 
   handleEndTurn(socketId: string): void {
@@ -1172,6 +1236,8 @@ export class GameRoom {
     this.startAuctionTimer()
     this.broadcast('auction:started', { auction: this.state.auction, gameState: this.state })
     this.broadcastState()
+    this.autoPassBrokeBidders() // players with 0 € are out before it even starts
+    if (this.resolveAuctionIfDone()) return
     this.startBotAuctionBidding()
   }
 
