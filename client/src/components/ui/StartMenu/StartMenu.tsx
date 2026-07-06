@@ -6,11 +6,11 @@ import { useSocketStore } from '../../../store/socketStore'
 import { useUiStore } from '../../../store/uiStore'
 import { getSocket } from '../../../socket/socketClient'
 import type { PlayerColor, PieceType } from '../../../types/game'
-import { PLAYER_COLORS } from '../../../types/game'
+import { PLAYER_COLORS, PIECE_LABELS } from '../../../types/game'
 import styles from './StartMenu.module.css'
 
-const PIECES: PieceType[] = ['Radiergummi', 'Lineal', 'Bleistift', 'Spitzer', 'Tintenfüller', 'Buch', 'Schere', 'Globus']
-const COLORS: PlayerColor[] = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan']
+const PIECES: PieceType[] = ['Radiergummi', 'Lineal', 'Bleistift', 'Spitzer', 'Tintenfüller', 'Buch', 'Schere', 'Globus', 'Taschenrechner']
+const COLORS: PlayerColor[] = ['red', 'blue', 'green', 'yellow', 'purple', 'orange', 'pink', 'cyan', 'brown']
 
 export function StartMenu() {
   const [name, setName] = useState('')
@@ -145,12 +145,7 @@ export function StartMenu() {
                     title={taken ? `${p} – bereits vergeben` : p}
                     disabled={taken}
                   >
-                    {p === 'Radiergummi' && '🩷'}
-                    {p === 'Lineal' && '📏'}
-                    {p === 'Bleistift' && '✏️'}
-                    {p === 'Spitzer' && '⚙️'}
-                    {p === 'Tintenfüller' && '🖊️'}
-                    {p === 'Buch' && '📚'}
+                    <span className={styles.pieceEmoji}>{PIECE_LABELS[p]}</span>
                     <span>{taken ? '✗' : p}</span>
                   </button>
                 )

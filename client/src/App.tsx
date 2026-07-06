@@ -1,9 +1,11 @@
 import { useUiStore } from './store/uiStore'
+import { useGameStore } from './store/gameStore'
 import { StartMenu } from './components/ui/StartMenu/StartMenu'
 import { Lobby } from './components/ui/Lobby/Lobby'
 import { Board2D } from './components/board/Board2D'
 import { HUD } from './components/ui/HUD/HUD'
 import { Modals } from './components/ui/Modals/Modals'
+import { ErrorBoundary } from './components/ErrorBoundary'
 
 function NoticeBanner() {
   const notice = useUiStore(s => s.notice)
@@ -38,17 +40,19 @@ function NoticeBanner() {
 
 export default function App() {
   const appPhase = useUiStore(s => s.appPhase)
+  // Fresh reference on every server update → lets the ErrorBoundary auto-recover.
+  const gameState = useGameStore(s => s.gameState)
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       {appPhase === 'menu' && <StartMenu />}
       {appPhase === 'lobby' && <Lobby />}
       {appPhase === 'game' && (
-        <>
+        <ErrorBoundary resetKey={gameState}>
           <Board2D />
           <HUD />
           <Modals />
-        </>
+        </ErrorBoundary>
       )}
       <NoticeBanner />
     </div>

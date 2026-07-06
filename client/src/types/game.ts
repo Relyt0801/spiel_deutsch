@@ -1,6 +1,6 @@
-export type PieceType = 'Radiergummi' | 'Lineal' | 'Bleistift' | 'Spitzer' | 'Tintenfüller' | 'Buch' | 'Schere' | 'Globus'
+export type PieceType = 'Radiergummi' | 'Lineal' | 'Bleistift' | 'Spitzer' | 'Tintenfüller' | 'Buch' | 'Schere' | 'Globus' | 'Taschenrechner'
 
-export type PlayerColor = 'red' | 'blue' | 'green' | 'yellow' | 'purple' | 'orange' | 'pink' | 'cyan'
+export type PlayerColor = 'red' | 'blue' | 'green' | 'yellow' | 'purple' | 'orange' | 'pink' | 'cyan' | 'brown'
 
 export type GamePhase =
   | 'lobby'
@@ -152,6 +152,7 @@ export const PLAYER_COLORS: Record<PlayerColor, string> = {
   orange: '#FF6600',
   pink: '#FF66B3',
   cyan: '#00B3B3',
+  brown: '#8B5A2B',
 }
 
 export const PIECE_LABELS: Record<PieceType, string> = {
@@ -163,4 +164,5 @@ export const PIECE_LABELS: Record<PieceType, string> = {
   Buch: '📚',
   Schere: '✂️',
   Globus: '🌍',
+  Taschenrechner: '🧮',
 }
