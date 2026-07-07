@@ -181,6 +181,7 @@ export function Board2D() {
   const gameState = useGameStore(s => s.gameState)
   const myId = useSocketStore(s => s.myPlayerId)
   const isSpectator = useSocketStore(s => s.isSpectator)
+  const roomCode = useSocketStore(s => s.roomCode)
   const rawCameraTarget = useUiStore(s => s.cameraTarget)
   // Spectators always watch the full board (never the per-player zoom-follow).
   const cameraTarget = isSpectator ? null : rawCameraTarget
@@ -314,6 +315,14 @@ export function Board2D() {
             {!gameState && (
               <div className={styles.centerEmpty}>
                 <div className={styles.centerEmptyText}>Spiel lädt...</div>
+              </div>
+            )}
+
+            {/* Room code at the bottom of the board – visible to everyone for sharing. */}
+            {roomCode && (
+              <div className={styles.centerRoomCode}>
+                <span className={styles.centerRoomCodeLabel}>RAUM-CODE</span>
+                <span className={styles.centerRoomCodeValue}>{roomCode}</span>
               </div>
             )}
           </div>

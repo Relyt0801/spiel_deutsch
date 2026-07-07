@@ -93,7 +93,7 @@ export function setupSocketHandlers(io: Server): void {
         return
       }
       socket.join(room.code)
-      socket.emit('room:joined', { gameState: room.state, lobbyPlayers: room.getLobbyWithStatus() })
+      socket.emit('room:joined', { roomCode: room.code, gameState: room.state, lobbyPlayers: room.getLobbyWithStatus() })
       socket.to(room.code).emit('room:player-joined', {
         player: room.lobbyPlayers.find(p => p.id === socket.id),
         gameState: room.state,
@@ -110,7 +110,7 @@ export function setupSocketHandlers(io: Server): void {
       room.addSpectator(socket.id)
       roomManager.attachSocket(socket.id, room.code)
       socket.join(room.code)
-      socket.emit('room:spectating', { gameState: room.state, lobbyPlayers: room.getLobbyWithStatus() })
+      socket.emit('room:spectating', { roomCode: room.code, gameState: room.state, lobbyPlayers: room.getLobbyWithStatus() })
     })
 
     socket.on('room:leave', () => {

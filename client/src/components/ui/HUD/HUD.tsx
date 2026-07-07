@@ -59,6 +59,7 @@ export function HUD() {
     getSocket().emit('room:leave')
     clearSavedRoom()
     useGameStore.getState().clearGame()
+    useUiStore.getState().closeModal()
     useUiStore.getState().setAppPhase('menu')
   }
 

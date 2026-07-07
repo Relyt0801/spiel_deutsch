@@ -40,6 +40,7 @@ export function registerSocketHandlers(): void {
 
   // ─── ROOM EVENTS ───────────────────────────────────────────────────
   socket.on('room:created', ({ roomCode, gameState, lobbyPlayers }) => {
+    useUiStore.getState().closeModal()
     useSocketStore.getState().setRoomCode(roomCode)
     useSocketStore.getState().setIsHost(true)
     useSocketStore.getState().setIsSpectator(false)
@@ -51,9 +52,11 @@ export function registerSocketHandlers(): void {
     useUiStore.getState().setAppPhase('lobby')
   })
 
-  socket.on('room:joined', ({ gameState, lobbyPlayers }) => {
+  socket.on('room:joined', ({ roomCode, gameState, lobbyPlayers }) => {
+    useUiStore.getState().closeModal()
     useSocketStore.getState().setIsHost(false)
     useSocketStore.getState().setIsSpectator(false)
+    if (roomCode) { useSocketStore.getState().setRoomCode(roomCode); saveRoomCode(roomCode) }
     useGameStore.getState().setGameState(gameState ?? null)
     if (lobbyPlayers) useGameStore.getState().setLobbyPlayers(lobbyPlayers)
     useUiStore.getState().setAppPhase('lobby')
@@ -72,9 +75,10 @@ export function registerSocketHandlers(): void {
   })
 
   // Watch-only: no room saved (a reload should not silently rejoin as spectator).
-  socket.on('room:spectating', ({ gameState, lobbyPlayers }) => {
+  socket.on('room:spectating', ({ roomCode, gameState, lobbyPlayers }) => {
     useSocketStore.getState().setIsHost(false)
     useSocketStore.getState().setIsSpectator(true)
+    if (roomCode) useSocketStore.getState().setRoomCode(roomCode)
     if (lobbyPlayers) useGameStore.getState().setLobbyPlayers(lobbyPlayers)
     if (gameState) useGameStore.getState().setGameState(gameState)
     useUiStore.getState().setAppPhase('game')
@@ -132,6 +136,7 @@ export function registerSocketHandlers(): void {
   })
 
   socket.on('room:game-started', ({ gameState }) => {
+    useUiStore.getState().closeModal() // never carry a stale modal (e.g. winner) into a fresh game
     useGameStore.getState().setGameState(gameState)
     useUiStore.getState().setAppPhase('game')
     useUiStore.getState().setCameraTarget(null) // show full overview at game start
