@@ -28,6 +28,15 @@ html, body, #root {
   user-select: none;
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
+  /* No manual zoom / bounce-scroll – keeps the fixed board layout from shifting. */
+  touch-action: manipulation;
+  overscroll-behavior: none;
+}
+
+/* Lock the app to the visible area so iOS chrome / rubber-banding can't cut it off. */
+body {
+  position: fixed;
+  inset: 0;
 }
 
 button {

@@ -183,12 +183,22 @@ export function Board2D() {
   const cameraTarget = useUiStore(s => s.cameraTarget)
   const activeModal = useUiStore(s => s.activeModal)
 
-  const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight })
+  // Prefer the visual viewport: on iOS window.innerHeight counts the area behind the
+  // address bar, which made the board scale too big and get cut off at the bottom.
+  const readViewport = () => ({
+    w: window.visualViewport?.width ?? window.innerWidth,
+    h: window.visualViewport?.height ?? window.innerHeight,
+  })
+  const [viewport, setViewport] = useState(readViewport)
 
   useEffect(() => {
-    const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight })
+    const onResize = () => setViewport(readViewport())
     window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    window.visualViewport?.addEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.visualViewport?.removeEventListener('resize', onResize)
+    }
   }, [])
 
   // The camera stays zoomed on the target square for the whole turn; it is reset to

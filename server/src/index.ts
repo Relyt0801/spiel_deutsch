@@ -9,6 +9,15 @@ import { logger } from './utils/logger'
 
 const PORT = process.env.PORT || 3001
 
+// Keep the server alive no matter what: a single bad event / timer callback must never
+// crash the whole process and disconnect every player. Log it and carry on.
+process.on('uncaughtException', (err) => {
+  logger.error(`Uncaught exception (kept alive): ${err?.stack || err}`)
+})
+process.on('unhandledRejection', (reason) => {
+  logger.error(`Unhandled promise rejection (kept alive): ${reason}`)
+})
+
 // Allow all origins by default (single-service deployment, local tunnel, and the
 // dev Vite server on :5173 all "just work"). Lock it down only when CLIENT_ORIGIN
 // is explicitly set – e.g. a split Render deployment with separate client + server.

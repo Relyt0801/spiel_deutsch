@@ -8,6 +8,18 @@ export function setupSocketHandlers(io: Server): void {
   io.on('connection', (socket) => {
     logger.info(`Socket connected: ${socket.id}`)
 
+    // Wrap every event handler in try/catch so one bad event can't crash the process
+    // (which would disconnect *all* players). A failing handler is logged and ignored.
+    const rawOn = socket.on.bind(socket)
+    socket.on = ((event: string, handler: (...args: unknown[]) => void) =>
+      rawOn(event, (...args: unknown[]) => {
+        try {
+          handler(...args)
+        } catch (err) {
+          logger.error(`Socket handler '${event}' threw: ${(err as Error)?.stack ?? err}`)
+        }
+      })) as typeof socket.on
+
     // ─── ROOM MANAGEMENT ────────────────────────────────────────────────
     socket.on('room:create', ({ playerName, color, piece, clientToken }) => {
       const room = roomManager.createRoom(socket.id, playerName, color, piece, clientToken)
