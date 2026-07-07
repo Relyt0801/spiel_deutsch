@@ -22,15 +22,24 @@ export function HUD() {
   const turnTime = useUiStore(s => s.turnTimeRemaining)
   const tradeTime = useUiStore(s => s.tradeTimeRemaining)
 
-  const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight })
+  // Use the visual viewport (matches Board2D) so isCompact and showCenterInfo agree.
+  const readViewport = () => ({
+    w: window.visualViewport?.width ?? window.innerWidth,
+    h: window.visualViewport?.height ?? window.innerHeight,
+  })
+  const [viewport, setViewport] = useState(readViewport)
   useEffect(() => {
-    const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight })
+    const onResize = () => setViewport(readViewport())
     window.addEventListener('resize', onResize)
-    return () => window.removeEventListener('resize', onResize)
+    window.visualViewport?.addEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      window.visualViewport?.removeEventListener('resize', onResize)
+    }
   }, [])
   // Below this the board (and thus its center info) gets too small to read, so we
   // show a compact leaderboard on the LEFT instead. Threshold matches Board2D.
-  const isCompact = viewport.w < 760 || viewport.h < 640
+  const isCompact = Math.min(viewport.w, viewport.h) < 480
 
   if (!gameState) return null
 

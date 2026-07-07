@@ -235,7 +235,11 @@ export function Board2D() {
 
   // Show the in-board info panel whenever the board is big enough to read it.
   // (Kept in sync with HUD's `isCompact` so exactly one of the two is visible.)
-  const showCenterInfo = viewport.w >= 760 && viewport.h >= 640
+  // The centre info panel scales with the (square) board, so key it off the smaller
+  // dimension. This keeps it in the middle of the field on iPad & desktop (portrait and
+  // landscape) instead of leaving the centre empty; only phones fall back to the
+  // compact left leaderboard. (Kept in sync with HUD's `isCompact`.)
+  const showCenterInfo = Math.min(viewport.w, viewport.h) >= 480
 
   return (
     <div className={styles.viewport}>
