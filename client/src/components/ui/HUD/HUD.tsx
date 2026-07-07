@@ -13,6 +13,7 @@ export function HUD() {
   const gameState = useGameStore(s => s.gameState)
   const myId = useSocketStore(s => s.myPlayerId)
   const isHost = useSocketStore(s => s.isHost)
+  const isSpectator = useSocketStore(s => s.isSpectator)
   const isAnimating = useUiStore(s => s.isAnimating)
   const diceAnimating = useUiStore(s => s.diceAnimating)
   const errorMessage = useUiStore(s => s.errorMessage)
@@ -199,6 +200,20 @@ export function HUD() {
             </button>
           )}
           <button className={styles.btnLeave} onClick={handleLeave}>🚪 Verlassen</button>
+        </div>
+      )}
+
+      {/* Spectator: read-only, no game controls. */}
+      {!myPlayer && isSpectator && (
+        <div className={styles.spectatorBar}>
+          <span className={styles.spectatorBadge}>👁 Zuschauer</span>
+          <button className={styles.btnLeave} onClick={() => {
+            getSocket().emit('room:leave')
+            clearSavedRoom()
+            useGameStore.getState().clearGame()
+            useSocketStore.getState().setIsSpectator(false)
+            useUiStore.getState().setAppPhase('menu')
+          }}>🚪 Verlassen</button>
         </div>
       )}
 

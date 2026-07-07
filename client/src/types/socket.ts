@@ -4,6 +4,7 @@ export interface ClientToServerEvents {
   'room:create': (payload: { playerName: string; color: PlayerColor; piece: PieceType; clientToken?: string }) => void
   'room:join': (payload: { roomCode: string; playerName: string; color: PlayerColor; piece: PieceType; clientToken?: string }) => void
   'room:rejoin': (payload: { roomCode: string; clientToken: string }) => void
+  'room:spectate': (payload: { roomCode: string }) => void
   'room:play-again': () => void
   'room:peek': (payload: { roomCode: string }) => void
   'room:leave': () => void
@@ -58,6 +59,7 @@ export interface ServerToClientEvents {
   'room:rejoined': (payload: { roomCode: string; gameState: GameState | null; lobbyPlayers: Array<{ id: string; name: string; color: string; piece: string; isBot: boolean; isReady: boolean; disconnected?: boolean }>; isHost: boolean; inGame: boolean }) => void
   'room:rejoin-failed': (payload: Record<string, never>) => void
   'room:returned-to-lobby': (payload: Record<string, never>) => void
+  'room:spectating': (payload: { gameState: GameState; lobbyPlayers: Array<{ id: string; name: string; color: string; piece: string; isBot: boolean; isReady: boolean }> }) => void
   'room:lobby-update': (payload: { lobbyPlayers: Array<{ id: string; name: string; color: string; piece: string; isBot: boolean; isReady: boolean }>; allReady: boolean; hostId: string; settings?: GameSettings }) => void
   'room:settings-update': (payload: { settings: GameSettings }) => void
   'room:kicked': () => void

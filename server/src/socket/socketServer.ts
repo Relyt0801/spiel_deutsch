@@ -58,7 +58,26 @@ export function setupSocketHandlers(io: Server): void {
 
     socket.on('room:join', ({ roomCode, playerName, color, piece, clientToken }) => {
       const existingRoom = roomManager.getRoomByCode(roomCode)
-      if (existingRoom && !existingRoom.state) {
+      // Game already running: try to re-attach the player to their own (still active) slot
+      // via the stable token, so re-entering the code lets them keep playing.
+      if (existingRoom && existingRoom.state) {
+        const res = existingRoom.reconnectPlayer(socket.id, clientToken)
+        if (res) {
+          roomManager.attachSocket(socket.id, existingRoom.code)
+          socket.join(existingRoom.code)
+          socket.emit('room:rejoined', {
+            roomCode: existingRoom.code,
+            gameState: existingRoom.state,
+            lobbyPlayers: existingRoom.getLobbyWithStatus(),
+            isHost: res.isHost,
+            inGame: res.inGame,
+          })
+          return
+        }
+        socket.emit('room:error', { message: 'Spiel läuft bereits. Du kannst nur als Zuschauer beitreten.' })
+        return
+      }
+      if (existingRoom) {
         if (existingRoom.lobbyPlayers.some(p => p.piece === piece)) {
           socket.emit('room:error', { message: 'Diese Spielfigur ist bereits vergeben.' })
           return
@@ -79,6 +98,19 @@ export function setupSocketHandlers(io: Server): void {
         player: room.lobbyPlayers.find(p => p.id === socket.id),
         gameState: room.state,
       })
+    })
+
+    // Watch a running game without taking part.
+    socket.on('room:spectate', ({ roomCode }) => {
+      const room = roomManager.getRoomByCode(roomCode)
+      if (!room || !room.state) {
+        socket.emit('room:error', { message: 'Kein laufendes Spiel unter diesem Code.' })
+        return
+      }
+      room.addSpectator(socket.id)
+      roomManager.attachSocket(socket.id, room.code)
+      socket.join(room.code)
+      socket.emit('room:spectating', { gameState: room.state, lobbyPlayers: room.getLobbyWithStatus() })
     })
 
     socket.on('room:leave', () => {

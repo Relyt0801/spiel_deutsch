@@ -24,7 +24,7 @@ export type LobbyPlayer = {
 }
 
 /** Grace period (ms) a reloading player has to rejoin before being removed. */
-export const RECONNECT_GRACE_MS = 45_000
+export const RECONNECT_GRACE_MS = 60_000
 /** How long a connected player may take to sell/mortgage before the server auto-settles. */
 export const DEBT_GRACE_MS = 90_000
 
@@ -54,6 +54,8 @@ export class GameRoom {
   private tokenByPlayer: Map<string, string> = new Map()
   private playerByToken: Map<string, string> = new Map()
   private disconnectTimers: Map<string, ReturnType<typeof setTimeout>> = new Map()
+  /** Watch-only sockets: receive broadcasts but never take part in the game. */
+  private spectators: Set<string> = new Set()
 
   constructor(code: string, hostId: string, io: Server) {
     this.code = code
@@ -158,10 +160,21 @@ export class GameRoom {
     this.broadcastState() // manageTurnTimer() inside starts the clock when time-limit is on
   }
 
+  // ─── Spectators (watch-only) ──────────────────────────────────────────────
+
+  addSpectator(socketId: string): void {
+    this.spectators.add(socketId)
+  }
+
+  isSpectator(socketId: string): boolean {
+    return this.spectators.has(socketId)
+  }
+
   // ─── Disconnect / reconnect grace ─────────────────────────────────────────
 
   /** A socket dropped (reload/network). Keep the slot alive for RECONNECT_GRACE_MS. */
   handleDisconnect(playerId: string): void {
+    if (this.spectators.has(playerId)) { this.spectators.delete(playerId); return }
     const lobbyP = this.lobbyPlayers.find(p => p.id === playerId)
     if (lobbyP?.isBot) return
     const inState = this.state?.players.some(p => p.id === playerId) ?? false
@@ -229,7 +242,9 @@ export class GameRoom {
       const player = this.state.players.find(p => p.id === playerId)
       if (player && player.isActive && !player.isBankrupt) {
         const isCurrent = this.state.players[this.state.currentPlayerIndex]?.id === playerId
-        this.state = declareBankruptcy(this.state, playerId, null, this.settings.bankruptcyMode, isCurrent)
+        // A player who left / timed out releases everything back to the bank: streets
+        // become free again and their buildings are removed (not auctioned/handed over).
+        this.state = declareBankruptcy(this.state, playerId, null, 'release', isCurrent)
         this.broadcast('game:player-bankrupt', { playerId, gameState: this.state })
         if (this.state.gamePhase === 'game_over') {
           this.broadcast('game:over', { winnerId: this.state.winnerId, gameState: this.state })

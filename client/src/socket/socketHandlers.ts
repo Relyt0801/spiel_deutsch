@@ -42,6 +42,7 @@ export function registerSocketHandlers(): void {
   socket.on('room:created', ({ roomCode, gameState, lobbyPlayers }) => {
     useSocketStore.getState().setRoomCode(roomCode)
     useSocketStore.getState().setIsHost(true)
+    useSocketStore.getState().setIsSpectator(false)
     saveRoomCode(roomCode)
     if (gameState) useGameStore.getState().setGameState(gameState)
     if (lobbyPlayers) useGameStore.getState().setLobbyPlayers(lobbyPlayers)
@@ -50,6 +51,7 @@ export function registerSocketHandlers(): void {
 
   socket.on('room:joined', ({ gameState, lobbyPlayers }) => {
     useSocketStore.getState().setIsHost(false)
+    useSocketStore.getState().setIsSpectator(false)
     if (gameState) useGameStore.getState().setGameState(gameState)
     if (lobbyPlayers) useGameStore.getState().setLobbyPlayers(lobbyPlayers)
     useUiStore.getState().setAppPhase('lobby')
@@ -59,11 +61,22 @@ export function registerSocketHandlers(): void {
   socket.on('room:rejoined', ({ roomCode, gameState, lobbyPlayers, isHost, inGame }) => {
     useSocketStore.getState().setRoomCode(roomCode)
     useSocketStore.getState().setIsHost(isHost)
+    useSocketStore.getState().setIsSpectator(false)
     saveRoomCode(roomCode)
     if (lobbyPlayers) useGameStore.getState().setLobbyPlayers(lobbyPlayers)
     useGameStore.getState().setGameState(gameState ?? null)
     useUiStore.getState().setAppPhase(inGame ? 'game' : 'lobby')
     if (inGame) useUiStore.getState().setCameraTarget(null)
+  })
+
+  // Watch-only: no room saved (a reload should not silently rejoin as spectator).
+  socket.on('room:spectating', ({ gameState, lobbyPlayers }) => {
+    useSocketStore.getState().setIsHost(false)
+    useSocketStore.getState().setIsSpectator(true)
+    if (lobbyPlayers) useGameStore.getState().setLobbyPlayers(lobbyPlayers)
+    if (gameState) useGameStore.getState().setGameState(gameState)
+    useUiStore.getState().setAppPhase('game')
+    useUiStore.getState().setCameraTarget(null)
   })
 
   socket.on('room:rejoin-failed', () => {

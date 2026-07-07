@@ -74,6 +74,12 @@ export function StartMenu() {
     getSocket().emit('room:join', { roomCode: roomCode.trim().toUpperCase(), playerName: name.trim(), color, piece, clientToken: getClientToken() })
   }
 
+  const handleSpectate = () => {
+    if (!roomCode.trim()) { setError('Bitte Raum-Code eingeben.'); return }
+    setError(null)
+    getSocket().emit('room:spectate', { roomCode: roomCode.trim().toUpperCase() })
+  }
+
   return (
     <div className={styles.container}>
       <div className={styles.card}>
@@ -178,6 +184,16 @@ export function StartMenu() {
             >
               {mode === 'create' ? '🎮 Raum erstellen' : '🚪 Beitreten'}
             </button>
+
+            {mode === 'join' && (
+              <button
+                className={styles.btnSecondary}
+                onClick={handleSpectate}
+                disabled={connectionStatus !== 'connected'}
+              >
+                👁 Nur zuschauen
+              </button>
+            )}
           </div>
         )}
       </div>

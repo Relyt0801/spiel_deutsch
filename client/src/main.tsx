@@ -19,13 +19,8 @@ document.addEventListener('wheel', (e) => {
 window.addEventListener('keydown', (e) => {
   if ((e.ctrlKey || e.metaKey) && ['+', '-', '=', '_', '0'].includes(e.key)) e.preventDefault()
 })
-// iOS double-tap-to-zoom guard.
-let lastTouchEnd = 0
-document.addEventListener('touchend', (e) => {
-  const now = Date.now()
-  if (now - lastTouchEnd <= 300) e.preventDefault()
-  lastTouchEnd = now
-}, { passive: false })
+// Note: double-tap-to-zoom is already handled by `touch-action: manipulation` +
+// `user-scalable=no`, so we don't touch `touchend` (that would break scrolling / taps).
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
