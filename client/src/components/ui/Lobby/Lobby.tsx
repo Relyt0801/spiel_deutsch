@@ -31,7 +31,9 @@ export function Lobby() {
     getSocket().emit('room:update-settings', { settings: patch })
   const currentBankruptcy = BANKRUPTCY_OPTIONS.find(o => o.value === lobbySettings.bankruptcyMode) ?? BANKRUPTCY_OPTIONS[0]
 
-  const allPlayers = gameState?.players.length ? gameState.players : lobbyPlayers
+  // The lobby list is always the authoritative lobbyPlayers – never a leftover gameState
+  // (which would ghost a previous round's players/bots into a fresh lobby).
+  const allPlayers = lobbyPlayers
   const me = lobbyPlayers.find(p => p.id === myId)
   const amIReady = me?.isReady ?? false
   const canStart = lobbyAllReady && allPlayers.length >= 1

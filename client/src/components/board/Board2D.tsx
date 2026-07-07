@@ -180,7 +180,10 @@ function Square({
 export function Board2D() {
   const gameState = useGameStore(s => s.gameState)
   const myId = useSocketStore(s => s.myPlayerId)
-  const cameraTarget = useUiStore(s => s.cameraTarget)
+  const isSpectator = useSocketStore(s => s.isSpectator)
+  const rawCameraTarget = useUiStore(s => s.cameraTarget)
+  // Spectators always watch the full board (never the per-player zoom-follow).
+  const cameraTarget = isSpectator ? null : rawCameraTarget
   const activeModal = useUiStore(s => s.activeModal)
 
   // Prefer the visual viewport: on iOS window.innerHeight counts the area behind the
@@ -313,10 +316,12 @@ export function Board2D() {
         </div>
       </div>
 
-      {/* Overview / zoom toggle — always available so anyone can look around */}
-      <button className={styles.overviewBtn} onClick={toggleOverview}>
-        {cameraTarget === null ? '🎯 Zur Figur' : '🔍 Übersicht'}
-      </button>
+      {/* Overview / zoom toggle — hidden for spectators (they always see the overview). */}
+      {!isSpectator && (
+        <button className={styles.overviewBtn} onClick={toggleOverview}>
+          {cameraTarget === null ? '🎯 Zur Figur' : '🔍 Übersicht'}
+        </button>
+      )}
 
       {/* Dice overlay rendered at fixed screen position */}
       <DiceOverlay />

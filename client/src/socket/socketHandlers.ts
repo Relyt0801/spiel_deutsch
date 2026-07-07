@@ -44,7 +44,9 @@ export function registerSocketHandlers(): void {
     useSocketStore.getState().setIsHost(true)
     useSocketStore.getState().setIsSpectator(false)
     saveRoomCode(roomCode)
-    if (gameState) useGameStore.getState().setGameState(gameState)
+    // Always (re)set – a fresh lobby has no game, so clear any leftover state from a
+    // previous round (otherwise old players/bots ghost into the new lobby).
+    useGameStore.getState().setGameState(gameState ?? null)
     if (lobbyPlayers) useGameStore.getState().setLobbyPlayers(lobbyPlayers)
     useUiStore.getState().setAppPhase('lobby')
   })
@@ -52,7 +54,7 @@ export function registerSocketHandlers(): void {
   socket.on('room:joined', ({ gameState, lobbyPlayers }) => {
     useSocketStore.getState().setIsHost(false)
     useSocketStore.getState().setIsSpectator(false)
-    if (gameState) useGameStore.getState().setGameState(gameState)
+    useGameStore.getState().setGameState(gameState ?? null)
     if (lobbyPlayers) useGameStore.getState().setLobbyPlayers(lobbyPlayers)
     useUiStore.getState().setAppPhase('lobby')
   })
