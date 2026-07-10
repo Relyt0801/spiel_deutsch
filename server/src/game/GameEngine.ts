@@ -1,11 +1,11 @@
 import { v4 as uuidv4 } from 'uuid'
 import {
-  BOARD_SQUARES, COLOR_GROUPS, CHANCE_CARD_IDS, COMMUNITY_CARD_IDS,
+  BOARD_SQUARES, COLOR_GROUPS,
   JAIL_INDEX, GO_INDEX, GO_TO_JAIL_INDEX,
   JAIL_BAIL, PASS_GO_AMOUNT, STARTING_MONEY, BANK_HOUSES, BANK_HOTELS,
   RAILROAD_INDICES, UTILITY_INDICES,
 } from '../config/boardData'
-import { ALL_CARDS } from '../config/cards'
+import { ALL_CARDS, CHANCE_CARDS, COMMUNITY_CARDS } from '../config/cards'
 
 export interface Player {
   id: string
@@ -191,8 +191,10 @@ export function initGameState(
     activeTrade: null,
     bankHouses: BANK_HOUSES,
     bankHotels: BANK_HOTELS,
-    chanceDeck: shuffle(CHANCE_CARD_IDS),
-    communityDeck: shuffle(COMMUNITY_CARD_IDS),
+    // Decks direkt aus den Kartendaten ableiten – eine separat gepflegte ID-Liste
+    // kann sonst IDs enthalten, zu denen keine Karte existiert (→ leere Karte, Client-Crash).
+    chanceDeck: shuffle(CHANCE_CARDS.map(c => c.id)),
+    communityDeck: shuffle(COMMUNITY_CARDS.map(c => c.id)),
     chanceDiscardPile: [],
     communityDiscardPile: [],
     log: [{ timestamp: Date.now(), message: 'Spiel gestartet! Viel Spaß beim Remigianum Monopoly!', type: 'success' }],
@@ -746,14 +748,28 @@ export function applyCardEffect(state: GameState, playerId: string): GameState {
       const { newState } = applyLanding(s, playerId)
       return newState
     }
-    case 'PAY_PARKING': {
+    case 'PAY_PARKING':
+    case 'PAY_FREE_PARKING': {
       const res = payToBank(s, playerId, card.amount!, true)
       s = res.state
       if (res.bankrupt) return s
       s = addLog(s, `${player.name}: Karte – zahlt ${card.amount}€ in die Freie Pause.`, 'warning')
       break
     }
-    case 'EACH_PAY_PARKING': {
+    case 'COLLECT_FROM_RICHEST': {
+      const amt = card.amount ?? 100
+      const opponents = s.players.filter(p => p.id !== playerId && p.isActive && !p.isBankrupt)
+      if (opponents.length === 0) break
+      const richest = opponents.reduce((a, b) => (b.money > a.money ? b : a))
+      const paid = Math.min(amt, richest.money)
+      s.players = s.players.map(p =>
+        p.id === playerId ? { ...p, money: p.money + paid }
+          : p.id === richest.id ? { ...p, money: p.money - paid } : p)
+      s = addLog(s, `${player.name}: Karte – erhält ${paid}€ von ${richest.name} (reichster Mitspieler).`, 'success')
+      break
+    }
+    case 'EACH_PAY_PARKING':
+    case 'PLAYERS_PAY_FREE_PARKING': {
       const amt = card.amount!
       let pot = 0
       s.players = s.players.map(p => {
@@ -804,7 +820,8 @@ export function applyCardEffect(state: GameState, playerId: string): GameState {
         gamePhase: 'card_target',
       }
     }
-    case 'CLASSROOM_GAMBLE': {
+    case 'CLASSROOM_GAMBLE':
+    case 'CLASSROOM_ROLL': {
       const amt = card.amount ?? 100
       if (player.isBot || player.disconnected) {
         const r = rollDice()

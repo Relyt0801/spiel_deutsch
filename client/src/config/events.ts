@@ -67,6 +67,9 @@ export type EventAction =
   | 'BUILDING_REPAIRS'
   | 'ROLL_OR_JAIL'
   | 'SWAP_POSITION'
+  | 'PAY_FREE_PARKING'
+  | 'PLAYERS_PAY_FREE_PARKING'
+  | 'COLLECT_FROM_RICHEST'
 
 export interface EventCard {
   id: string
@@ -113,23 +116,20 @@ export const EVENT_CARDS: EventCard[] = [
   { id: 'C27', deck: 'chance', title: '3D – Drucker',                      content: 'Du hast ein cooles Spielzeug, welches du 3D-Drucken möchtest. Rücke vor bis zum Makerspace.', action: 'ADVANCE_TO', target: 12 },
   { id: 'C28', deck: 'chance', title: 'Raumvertretung',                   content: 'Untis zeigt an, dass du und dein Freund kurzfristig die Klassenräume tauscht. Wähle einen Mitspieler aus, mit dem du den Platz wechseln möchtest.', action: 'SWAP_POSITION' },
 
-  // ── Klassenbuch (community) – 16 Karten ──────────────────────────────────
-  { id: 'K1',  deck: 'community', title: 'Zeugnis',           content: 'Zeugnis! Gehe zu Schulbeginn und erhalte 200€.',                              action: 'ADVANCE_TO_GO' },
-  { id: 'K2',  deck: 'community', title: 'Fehler korrigiert', content: 'Fehler korrigiert! Erhalte 200€.',                                            action: 'COLLECT', amount: 200 },
-  { id: 'K3',  deck: 'community', title: 'Schüleraustausch',  content: 'Schüleraustausch: Zahle 50€.',                                                action: 'PAY', amount: 50 },
-  { id: 'K4',  deck: 'community', title: 'Befreiungskarte',   content: 'Befreiung aus dem Bildungsbunker. Diese Karte aufbewahren.',                   action: 'GET_OUT_OF_JAIL_FREE' },
-  { id: 'K5',  deck: 'community', title: 'Bestes Referat',    content: 'Bestes Referat! Erhalte 100€.',                                               action: 'COLLECT', amount: 100 },
-  { id: 'K6',  deck: 'community', title: 'Nachhilfestunden',  content: 'Nachhilfestunden: Zahle 100€.',                                               action: 'PAY', amount: 100 },
-  { id: 'K7',  deck: 'community', title: 'Nachgesessen',      content: 'Nachgesessen! Gehe in den Bildungsbunker.',                                   action: 'GO_TO_JAIL' },
-  { id: 'K8',  deck: 'community', title: 'Schulspende',       content: 'Schulspende: Jeder Mitspieler zahlt dir 10€.',                                action: 'COLLECT_FROM_PLAYERS', amount: 10 },
-  { id: 'K9',  deck: 'community', title: 'Schularzt',         content: 'Schularzt-Untersuchung: Zahle 50€.',                                          action: 'PAY', amount: 50 },
-  { id: 'K10', deck: 'community', title: 'Klassenkasse',      content: 'Klassenkasse aufgebessert! Erhalte 20€.',                                     action: 'COLLECT', amount: 20 },
-  { id: 'K11', deck: 'community', title: 'Schulreise',        content: 'Schulreise-Erstattung! Erhalte 100€.',                                        action: 'COLLECT', amount: 100 },
-  { id: 'K12', deck: 'community', title: 'Rückerstattung',    content: 'Schulgeld-Rückerstattung! Erhalte 25€.',                                      action: 'COLLECT', amount: 25 },
-  { id: 'K13', deck: 'community', title: 'Gebäudeschäden',    content: 'Gebäudeschäden: 40€ pro Klassenraum, 115€ pro Schulgebäude.',                  action: 'BUILDING_REPAIRS', house: 40, hotel: 115 },
-  { id: 'K14', deck: 'community', title: 'Geburtstag',        content: 'Geburtstag! Jeder Mitspieler zahlt dir 10€.',                                 action: 'COLLECT_FROM_PLAYERS', amount: 10 },
-  { id: 'K15', deck: 'community', title: 'Stipendium',        content: 'Stipendium! Erhalte 150€.',                                                   action: 'COLLECT', amount: 150 },
-  { id: 'K16', deck: 'community', title: 'Schulbücher zurück',content: 'Schulbücher zurückgegeben! Erhalte 50€.',                                     action: 'COLLECT', amount: 50 },
+  // ── Klassenbuch (community) – 13 Karten (synchron zu server/src/config/events.ts) ──
+  { id: 'K1',  deck: 'community', title: 'Vertretungsstunde',      content: 'Du hast Vertretung und keine Aufgaben bekommen. Du bekommst eine „Komme aus dem Bildungsbunker frei“-Karte.', action: 'GET_OUT_OF_JAIL_FREE' },
+  { id: 'K2',  deck: 'community', title: 'Zeugnisgeld',            content: 'Deine Großeltern sind stolz auf dein Zeugnis und geben dir Zeugnisgeld. Ziehe 200€ ein.',                    action: 'COLLECT', amount: 200 },
+  { id: 'K3',  deck: 'community', title: 'Motivation!',            content: 'Du stehst zwischen einer 3- und einer 4+, aber der Lehrer gibt dir die 4+, damit du nächstes Jahr motiviert in das Schuljahr startest. Rücke 3 Felder zurück.', action: 'MOVE_BACK', amount: 3 },
+  { id: 'K4',  deck: 'community', title: 'Prüfungstag',            content: '„Ach, ich freestyle das schon“ hat wohl nicht funktioniert und du benötigst Nachhilfe. Zahle 50€ in die Freistunde.', action: 'PAY_FREE_PARKING', amount: 50 },
+  { id: 'K5',  deck: 'community', title: 'Leseband',               content: 'Eure Klasse legt sich ein neues Buch für das Leseband zu. Jeder Spieler zahlt 20€ in die Freistunde.',       action: 'PLAYERS_PAY_FREE_PARKING', amount: 20 },
+  { id: 'K6',  deck: 'community', title: 'Hast du einen Euro?',    content: 'Du möchtest dir etwas zu essen kaufen und bittest deine Freunde um Geld. Zahle an jeden Spieler 10€.',       action: 'PAY_PLAYERS', amount: 10 },
+  { id: 'K7',  deck: 'community', title: 'Bestleistung!',          content: 'Du hast mit deinen Freunden eine Wette abgeschlossen und die beste Note bekommen! Du erhältst zur Belohnung von jedem Spieler 50€.', action: 'COLLECT_FROM_PLAYERS', amount: 50 },
+  { id: 'K8',  deck: 'community', title: 'Kaputte Technik',        content: 'Das Schul-WLAN ist erneut ausgefallen und muss erneuert werden. Zahle für jeden Klassenraum 30€ und für jedes Schulgebäude 100€.', action: 'BUILDING_REPAIRS', house: 30, hotel: 100 },
+  { id: 'K9',  deck: 'community', title: 'Bücherrückgabe',         content: 'Dein Buch hatte einen Wasserschaden. Zahle 100€ in die Freistunde.',                                          action: 'PAY_FREE_PARKING', amount: 100 },
+  { id: 'K10', deck: 'community', title: 'Zahltag',                content: 'Du hast deinem Freund Geld für ein Schnitzelbrötchen geliehen und verlangst Zinsen. Du erhältst 100€ vom reichsten Mitspieler.', action: 'COLLECT_FROM_RICHEST', amount: 100 },
+  { id: 'K11', deck: 'community', title: 'AAS — Alles außer Schule', content: 'Die eigentliche Aufgabe war es, ein Grammatik-Spiel für euch zu erstellen. Diese Aufgabe wurde gekonnt ignoriert. Rücke vor bis zur Freistunde.', action: 'ADVANCE_TO', target: 20 },
+  { id: 'K12', deck: 'community', title: 'Klassensprecherwahl',    content: 'Du wurdest gegen deinen Willen von deinen Freunden als Klassensprecher vorgeschlagen. Als Rache klaust du deren Pausengeld. Du erhältst von jedem Spieler 25€.', action: 'COLLECT_FROM_PLAYERS', amount: 25 },
+  { id: 'K13', deck: 'community', title: 'Tee-Stunde!',            content: 'Frau Schlettert lädt dich zum Tee-Trinken ein. Du bist erneut am Zug.',                                       action: 'EXTRA_TURN' },
 ]
 
 /** Schneller Zugriff auf den Titel einer Karte per id (z. B. fürs Kartenfenster). */

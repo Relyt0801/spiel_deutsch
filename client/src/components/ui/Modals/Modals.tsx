@@ -336,7 +336,9 @@ interface CardModalProps {
 
 function CardModal({ data, closeModal }: CardModalProps) {
   const cardType = data.cardType as 'chance' | 'community'
-  const card = data.card as { id: string; text: string }
+  // Defensiv: eine fehlende/defekte Karte darf nie das UI crashen – der Spieler
+  // muss immer bestätigen können, sonst hängt das Spiel für alle.
+  const card = (data.card ?? { id: '', text: 'Karte konnte nicht geladen werden.' }) as { id: string; text: string }
   const isMyTurn = (data.isMyTurn as boolean) ?? false
   const isChance = cardType === 'chance'
 
