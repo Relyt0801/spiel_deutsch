@@ -86,42 +86,75 @@ export function HUD() {
           ⚠️ {errorMessage}
         </div>
       )}
-      {/* Turn indicator top center */}
-      <div className={styles.turnBanner}>
-        <div
-          className={styles.turnDot}
-          style={{ background: PLAYER_COLORS[currentPlayer?.color] || '#ccc' }}
-        />
-        <span>
-          {isMyTurn ? 'Du bist dran' : `${currentPlayer?.name} ist dran`}
-        </span>
-        {gameState.currentDiceRoll && (
-          <span className={styles.diceResult}>
-            🎲 {gameState.currentDiceRoll.die1} + {gameState.currentDiceRoll.die2} = {gameState.currentDiceRoll.total}
-            {gameState.currentDiceRoll.isDouble && ' (Pasch! 🎉)'}
+      {/* Turn indicator top center — only on large screens. On compact screens the
+          same info lives in the centered panel below (in the middle of the board). */}
+      {!isCompact && (
+        <div className={styles.turnBanner}>
+          <div
+            className={styles.turnDot}
+            style={{ background: PLAYER_COLORS[currentPlayer?.color] || '#ccc' }}
+          />
+          <span className={styles.turnBannerName}>
+            {isMyTurn ? 'Du bist dran' : `${currentPlayer?.name} ist dran`}
           </span>
-        )}
-        {(showTurnTimer || showTradeTimer) && (
-          <span className={`${styles.timer} ${((showTradeTimer ? tradeTime! : turnTime!) <= 15) ? styles.timerLow : ''}`}>
-            ⏱ {fmt(showTradeTimer ? tradeTime! : turnTime!)}
-          </span>
-        )}
-      </div>
+          {gameState.currentDiceRoll && (
+            <span className={styles.diceResult}>
+              🎲 {gameState.currentDiceRoll.die1} + {gameState.currentDiceRoll.die2} = {gameState.currentDiceRoll.total}
+              {gameState.currentDiceRoll.isDouble && ' (Pasch! 🎉)'}
+            </span>
+          )}
+          {(showTurnTimer || showTradeTimer) && (
+            <span className={`${styles.timer} ${((showTradeTimer ? tradeTime! : turnTime!) <= 15) ? styles.timerLow : ''}`}>
+              ⏱ {fmt(showTradeTimer ? tradeTime! : turnTime!)}
+            </span>
+          )}
+        </div>
+      )}
 
-      {/* Compact leaderboard on the LEFT — shown when the board center info is hidden
-          (small / short screens like an iPad in landscape). Keeps the top area clear. */}
+      {/* Compact info panel — centered in the MIDDLE of the board (not over the top/side
+          of the field). Shows turn, dice, leaderboard and the latest log. Display only
+          (pointer-events: none) so it never blocks tapping the board underneath. */}
       {isCompact && (
-        <div className={styles.leaderboard}>
-          {gameState.players.map((p, i) => (
-            <div
-              key={p.id}
-              className={`${styles.mobileChip} ${i === gameState.currentPlayerIndex ? styles.mobileChipActive : ''} ${p.isBankrupt ? styles.mobileChipBankrupt : ''}`}
-            >
-              <div className={styles.mobileChipDot} style={{ background: PLAYER_COLORS[p.color] || '#888' }} />
-              <span className={styles.mobileChipName}>{p.name}{p.id === myId ? ' ✓' : ''}{p.disconnected ? ' 🔌' : ''}</span>
-              <span className={styles.mobileChipMoney}>{p.money.toLocaleString('de-DE')}€</span>
+        <div className={styles.centerPanel}>
+          <div className={styles.cpTurn}>
+            <div className={styles.cpDot} style={{ background: PLAYER_COLORS[currentPlayer?.color] || '#ccc' }} />
+            <span className={styles.cpTurnName}>
+              {isMyTurn ? 'Du bist dran' : `${currentPlayer?.name} ist dran`}
+            </span>
+            {(showTurnTimer || showTradeTimer) && (
+              <span className={`${styles.cpTimer} ${((showTradeTimer ? tradeTime! : turnTime!) <= 15) ? styles.timerLow : ''}`}>
+                ⏱ {fmt(showTradeTimer ? tradeTime! : turnTime!)}
+              </span>
+            )}
+          </div>
+
+          {gameState.currentDiceRoll && (
+            <div className={styles.cpDice}>
+              🎲 {gameState.currentDiceRoll.die1} + {gameState.currentDiceRoll.die2} = {gameState.currentDiceRoll.total}
+              {gameState.currentDiceRoll.isDouble && <span className={styles.cpDouble}> · Pasch!</span>}
             </div>
-          ))}
+          )}
+
+          <div className={styles.cpPlayers}>
+            {gameState.players.map((p, i) => (
+              <div
+                key={p.id}
+                className={`${styles.cpRow} ${i === gameState.currentPlayerIndex ? styles.cpRowActive : ''} ${p.isBankrupt ? styles.cpRowBankrupt : ''}`}
+              >
+                <div className={styles.cpRowDot} style={{ background: PLAYER_COLORS[p.color] || '#888' }} />
+                <span className={styles.cpRowName}>{p.name}{p.id === myId ? ' ✓' : ''}{p.disconnected ? ' 🔌' : ''}</span>
+                <span className={styles.cpRowMoney}>{p.money.toLocaleString('de-DE')}€</span>
+              </div>
+            ))}
+          </div>
+
+          {gameState.log.length > 0 && (
+            <div className={styles.cpLog}>
+              {gameState.log.slice(-2).reverse().map((entry, i) => (
+                <div key={i} className={styles.cpLogEntry}>{entry.message}</div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

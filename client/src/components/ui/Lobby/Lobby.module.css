@@ -138,6 +138,7 @@
 
 .playerName {
   flex: 1;
+  min-width: 0; /* allow the name to shrink & ellipsize instead of stretching the row */
   font-size: 0.9rem;
   color: white;
   font-weight: 500;
