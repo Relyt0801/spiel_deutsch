@@ -45,9 +45,9 @@ export const STREETS_BY_COLOR: Record<StreetColor, StreetDef[]> = {
     { boardIndex: 9,  name: 'C-Trackt',  color: 'light_blue', kind: 'property', positionInColor: 3, price: 120, houseCost: 50, mortgage: 60, rent: [8, 40, 100, 300, 450, 600] },
   ],
   pink: [
-    { boardIndex: 11, name: 'S(Y)LT',            color: 'pink', kind: 'property', positionInColor: 1, price: 140, houseCost: 100, mortgage: 70, rent: [10, 50, 150, 450, 625, 750] },
-    { boardIndex: 13, name: 'Kaffee-Küche',        color: 'pink', kind: 'property', positionInColor: 2, price: 140, houseCost: 100, mortgage: 70, rent: [10, 50, 150, 450, 625, 750] },
-    { boardIndex: 14, name: "Schlettert's Tee",  color: 'pink', kind: 'property', positionInColor: 3, price: 160, houseCost: 100, mortgage: 80, rent: [12, 60, 180, 500, 700, 900] },
+    { boardIndex: 11, name: 'Svenni & Lauris Hood', color: 'pink', kind: 'property', positionInColor: 1, price: 140, houseCost: 100, mortgage: 70, rent: [10, 50, 150, 450, 625, 750] },
+    { boardIndex: 13, name: 'Kaffee-Küche',         color: 'pink', kind: 'property', positionInColor: 2, price: 140, houseCost: 100, mortgage: 70, rent: [10, 50, 150, 450, 625, 750] },
+    { boardIndex: 14, name: "Schlettert's Tee",     color: 'pink', kind: 'property', positionInColor: 3, price: 160, houseCost: 100, mortgage: 80, rent: [12, 60, 180, 500, 700, 900] },
   ],
   orange: [
     { boardIndex: 16, name: 'Spielverleih',  color: 'orange', kind: 'property', positionInColor: 1, price: 180, houseCost: 100, mortgage: 90,  rent: [14, 70, 200, 550, 750, 950] },
