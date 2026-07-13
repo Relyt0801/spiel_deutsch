@@ -194,7 +194,7 @@
 .btnClose:hover { background: rgba(255,255,255,0.2); }
 
 /* ── Card ── */
-.cardModal {}
+.cardModal { cursor: pointer; }
 .cardHeader {
   border-radius: 8px;
   padding: 0.5rem 1rem;

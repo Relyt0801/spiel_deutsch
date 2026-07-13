@@ -326,32 +326,38 @@ function CardModal({ data, closeModal }: CardModalProps) {
   const isMyTurn = (data.isMyTurn as boolean) ?? false
   const isChance = cardType === 'chance'
 
+  // Dismiss the card. The active player also acknowledges it on the server (which
+  // continues the turn); observers just close their popup.
+  const dismiss = () => {
+    closeModal()
+    if (isMyTurn) getSocket().emit('game:card-acknowledge')
+  }
+
   useEffect(() => {
     if (!isMyTurn) {
-      // Observers can't click "OK" – leave the card up long enough to read the (longer) text.
-      const t = setTimeout(() => closeModal(), 8000)
+      // Observers can tap to close early; this is just the auto-close fallback so a
+      // card never lingers. Kept short so bot/other cards clear quickly.
+      const t = setTimeout(() => closeModal(), 5000)
       return () => clearTimeout(t)
     }
   }, [isMyTurn, closeModal])
 
   const title = EVENT_TITLES[card.id]
 
+  // Whole card is tappable to dismiss → quick to flick away (especially on mobile).
   return (
-    <div className={styles.cardModal}>
+    <div className={styles.cardModal} onClick={dismiss} role="button" title="Tippen zum Schließen">
       <div className={styles.cardHeader} style={{ background: isChance ? '#d97706' : '#2563eb' }}>
         {isChance ? '⚡ Ereignis' : '📋 Klassenbuch'}
       </div>
       {title && <div className={styles.cardTitle}>{title}</div>}
       <div className={styles.cardText}>{card.text}</div>
       {isMyTurn ? (
-        <button className={styles.btnClose} onClick={() => {
-          closeModal()
-          getSocket().emit('game:card-acknowledge')
-        }}>
+        <button className={styles.btnClose} onClick={(e) => { e.stopPropagation(); dismiss() }}>
           OK, verstanden
         </button>
       ) : (
-        <p className={styles.smallText}>Schließt automatisch...</p>
+        <p className={styles.smallText}>Tippen zum Schließen · schließt automatisch</p>
       )}
     </div>
   )
