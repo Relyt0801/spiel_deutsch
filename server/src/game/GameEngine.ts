@@ -1100,6 +1100,19 @@ export function declareBankruptcy(
     p.id === playerId ? { ...p, isBankrupt: true, isActive: false, money: 0, properties: [] } : p
   )
 
+  // A pending trade the bankrupt player was part of can never complete → drop it so
+  // the game doesn't hang waiting on a player who is no longer around.
+  if (s.activeTrade && (s.activeTrade.fromPlayerId === playerId || s.activeTrade.toPlayerId === playerId)) {
+    s.activeTrade = null
+    if (s.gamePhase === 'trading') s.gamePhase = 'end_turn'
+  }
+  // Likewise clear this player's open debt – there's nothing left to settle once
+  // they're bankrupt (prevents a dangling debt_settlement state after a drop).
+  if (s.debt?.debtorId === playerId) {
+    s.debt = null
+    if (s.gamePhase === 'debt_settlement') s.gamePhase = 'end_turn'
+  }
+
   const winner = checkWinCondition(s)
   if (winner) {
     s.winnerId = winner

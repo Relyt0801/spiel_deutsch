@@ -48,8 +48,12 @@ export function registerSocketHandlers(): void {
     useUiStore.getState().setAppPhase('lobby')
   })
 
-  socket.on('room:joined', ({ gameState, lobbyPlayers }) => {
+  socket.on('room:joined', ({ roomCode, gameState, lobbyPlayers }) => {
     useSocketStore.getState().setIsHost(false)
+    if (roomCode) {
+      useSocketStore.getState().setRoomCode(roomCode)
+      saveRoomCode(roomCode) // persist so a reload can auto-rejoin (not just the host)
+    }
     if (gameState) useGameStore.getState().setGameState(gameState)
     if (lobbyPlayers) useGameStore.getState().setLobbyPlayers(lobbyPlayers)
     useUiStore.getState().setAppPhase('lobby')
@@ -67,8 +71,17 @@ export function registerSocketHandlers(): void {
   })
 
   socket.on('room:rejoin-failed', () => {
-    // The old room is gone (or grace expired) – forget it and stay in the menu.
+    // The old room is gone (or the 60s grace expired) – forget it.
     clearSavedRoom()
+    // If we were still showing a (now-frozen) lobby/game, don't leave the player
+    // stuck: reset to the menu with an explanation. Harmless when already at the menu.
+    const phase = useUiStore.getState().appPhase
+    if (phase !== 'menu') {
+      useGameStore.getState().clearGame()
+      useUiStore.getState().closeModal()
+      useUiStore.getState().setAppPhase('menu')
+      useUiStore.getState().setError('Verbindung zu lange unterbrochen – die Runde lief ohne dich weiter. Bitte neu beitreten.')
+    }
   })
 
   socket.on('room:returned-to-lobby', () => {

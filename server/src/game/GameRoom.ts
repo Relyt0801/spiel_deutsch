@@ -10,6 +10,7 @@ import {
 } from './GameEngine'
 import type { TradeOffer, DiceRoll, GameSettings, GamePhase } from './GameEngine'
 import { BOARD_SQUARES, COLOR_GROUPS, DOUBLE_IN_ROW_JAIL, RAILROAD_INDICES, UTILITY_INDICES } from '../config/boardData'
+import { ALL_CARDS } from '../config/cards'
 import { logger } from '../utils/logger'
 import { generateBotName } from '../utils/botNames'
 
@@ -223,11 +224,13 @@ export class GameRoom {
   /** Remove a player for good: bankruptcy (in game, per chosen mode) or lobby removal. */
   private dropPlayer(playerId: string): void {
     this.clearDisconnectTimer(playerId)
-    if (this.state) {
+    if (this.state && this.state.gamePhase !== 'game_over') {
       const player = this.state.players.find(p => p.id === playerId)
       if (player && player.isActive && !player.isBankrupt) {
         const isCurrent = this.state.players[this.state.currentPlayerIndex]?.id === playerId
+        const droppedTrade = this.tradeSnapshotInvolving(playerId)
         this.state = declareBankruptcy(this.state, playerId, null, this.settings.bankruptcyMode, isCurrent)
+        if (droppedTrade) this.notifyTradeCancelled(droppedTrade)
         this.broadcast('game:player-bankrupt', { playerId, gameState: this.state })
         if (this.state.gamePhase === 'game_over') {
           this.broadcast('game:over', { winnerId: this.state.winnerId, gameState: this.state })
@@ -1124,6 +1127,20 @@ export class GameRoom {
     const currentPlayer = this.state.players[this.state.currentPlayerIndex]
     if (currentPlayer.id !== socketId || this.state.gamePhase !== 'card_drawn') return
     this.state = applyCardEffect(this.state, socketId)
+    // A movement card may have landed the player on ANOTHER card square (e.g. "3 Felder
+    // zurück" → Klassenbuch), drawing a fresh card. Re-emit game:card-drawn so its modal
+    // opens; otherwise the turn would hang in the card_drawn phase with no popup.
+    if (this.state.gamePhase === 'card_drawn' && this.state.pendingCardAction) {
+      const { id, type } = this.state.pendingCardAction
+      this.broadcast('game:card-drawn', {
+        playerId: socketId,
+        card: ALL_CARDS[id as string],
+        cardType: type,
+        gameState: this.state,
+      })
+      this.broadcastState()
+      return
+    }
     // A movement card ("Rücke vor zu …") may have dropped the player on a buyable
     // property — emit the landing so the buy modal opens for them.
     if (this.state.gamePhase === 'buying') {
@@ -1234,6 +1251,19 @@ export class GameRoom {
     }
   }
 
+  /** Snapshot the active trade if `playerId` is part of it (before it gets cleared). */
+  private tradeSnapshotInvolving(playerId: string): TradeOffer | null {
+    const t = this.state?.activeTrade
+    if (t && (t.fromPlayerId === playerId || t.toPlayerId === playerId)) return t
+    return null
+  }
+
+  /** Close the trade UI for the remaining partner after a drop/bankruptcy killed the trade. */
+  private notifyTradeCancelled(trade: TradeOffer): void {
+    this.clearTradeTimer()
+    this.broadcast('trade:rejected', { trade, byId: null })
+  }
+
   handleRejectTrade(socketId: string, tradeId: string): void {
     if (!this.state?.activeTrade || this.state.activeTrade.id !== tradeId) return
     const trade = this.state.activeTrade
@@ -1254,7 +1284,9 @@ export class GameRoom {
       ? debt.creditorId
       : (this.state.properties[currentPlayer.position]?.ownerId || null)
     if (debt) { this.clearDebtTimer(); this.state = { ...this.state, debt: null } }
+    const droppedTrade = this.tradeSnapshotInvolving(socketId)
     this.state = declareBankruptcy(this.state, socketId, creditorId, this.settings.bankruptcyMode)
+    if (droppedTrade) this.notifyTradeCancelled(droppedTrade)
     this.broadcast('game:player-bankrupt', { playerId: socketId, gameState: this.state })
     if (this.state.gamePhase === 'game_over') {
       this.broadcast('game:over', { winnerId: this.state.winnerId, gameState: this.state })

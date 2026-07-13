@@ -47,7 +47,7 @@ export interface ClientToServerEvents {
 
 export interface ServerToClientEvents {
   'room:created': (payload: { roomCode: string; gameState: GameState; lobbyPlayers: Array<{ id: string; name: string; color: string; piece: string }> }) => void
-  'room:joined': (payload: { gameState: GameState; lobbyPlayers: Array<{ id: string; name: string; color: string; piece: string }> }) => void
+  'room:joined': (payload: { roomCode: string; gameState: GameState; lobbyPlayers: Array<{ id: string; name: string; color: string; piece: string }> }) => void
   'room:peek-result': (payload: { takenPieces: string[]; takenColors: string[] }) => void
   'room:error': (payload: { message: string }) => void
   'room:player-joined': (payload: { player: Player; gameState: GameState }) => void
