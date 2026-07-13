@@ -11,7 +11,7 @@ export const SQUARE_NAMES: string[] = [
   'H-Trackt',              // 8  Light blue
   'C-Trackt',              // 9  Light blue
   'Bildungsbunker',        // 10 Jail visit
-  'S(Y)LT',                // 11 Pink
+  'Svenni & Lauris Hood',  // 11 Pink
   'Makerspace',            // 12 Utility
   'Käsepalast',            // 13 Pink
   "Schlettert's Tee",      // 14 Pink
